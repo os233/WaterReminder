@@ -1,7 +1,7 @@
 {
-  "versionCode": 2,
-  "versionName": "1.1",
-  "apkUrl": "https://os233.github.io/WaterReminder/app/release/WaterReminder_v1.1_release.apk",
+  "versionCode": 3,
+  "versionName": "1.1.1",
+  "apkUrl": "https://os233.github.io/WaterReminder/app/release/WaterReminder_v1.1.1_release.apk",
   "changelog": "更新内容：\n1.修复已知问题\n2. 优化提醒功能\n3. 新增更新检查",
   "forceUpdate": false
 }
