@@ -12,8 +12,8 @@ android {
         applicationId = "com.example.waterreminder"
         minSdk = 26
         targetSdk = 34
-        versionCode = 2
-        versionName = "1.1"
+        versionCode = 3
+        versionName = "1.1.1"
     }
 
     buildTypes {
@@ -26,6 +26,7 @@ android {
         }
     }
 
+    // 自定义 APK 文件名：喝水提醒_v版本号_构建类型.apk
     applicationVariants.all {
         val variant = this
         variant.outputs.all {

@@ -11,9 +11,9 @@
       "type": "SINGLE",
       "filters": [],
       "attributes": [],
-      "versionCode": 2,
-      "versionName": "1.1",
-      "outputFile": "WaterReminder_v1.1_release.apk"
+      "versionCode": 3,
+      "versionName": "1.1.1",
+      "outputFile": "WaterReminder_v1.1.1_release.apk"
     }
   ],
   "elementType": "File"
