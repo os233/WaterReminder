@@ -91,13 +91,14 @@ cp keystore.properties.example keystore.properties
 # 2. 一键构建 → 归档 → 同步版本号
 ./scripts/release.sh
 # 3. 手工补 version.json 的 changelog（脚本不动它）
-# 4. 先把 APK 发到 GitHub Release（顺序不能反，见下方说明）：
-#    - 打 tag：git tag v<版本号> && git push origin v<版本号>
-#    - 网页：Releases → Draft a new release，选该 tag，把
-#      app/release/WaterReminder_v<版本号>_release.apk 拖进 assets 发布
-#    - 或配好 Secrets 后跑 Actions → Release → Run workflow，填 tag 自动构建上传
-# 5. 再提交推送 version.json（它上线后老版本用户才会拿到新 apkUrl）
-git add -A && git commit -m "release: 发布 <版本号>" && git push origin master
+# 4. 提交发版提交
+git add -A && git commit -m "release: 发布 <版本号>"
+# 5. 打 tag 并只推 tag → CI 自动构建签名 APK、创建 Release 并上传 asset
+#    （tag 必须打在 versionName 一致的提交上，工作流第一步会校验）
+git tag v<版本号> && git push origin v<版本号>
+# 6. 等 CI 跑完、Release 页能看到 APK asset 后，再推 master
+#    （version.json 上线后老版本用户才会拿到新 apkUrl）
+git push origin master
 ```
 
 `scripts/release.sh` 依次做：校验 `keystore.properties` 存在 → `./gradlew assembleRelease` →
@@ -107,6 +108,7 @@ git add -A && git commit -m "release: 发布 <版本号>" && git push origin mas
 
 GitHub Pages 从 `master` 分支根目录发布，但只托管 `version.json`（APK 走 Releases），push 后约 1 分钟生效。
 **务必先让 Release 里的 APK 就位，再 push `version.json`**：否则旧版本用户检查更新时会拿到一个 404 的 `apkUrl`。
+所以顺序是「推 tag → 等 Release 工作流跑完 → 再推 master」，不要一口气全推。
 
 **务必始终使用同一个密钥库**。签名不一致会导致老用户无法覆盖安装，只能卸载重装。
 
@@ -114,6 +116,7 @@ GitHub Pages 从 `master` 分支根目录发布，但只托管 `version.json`（
 
 ```bash
 python scripts/sync_version.py --check    # 只校验不写文件；CI 也跑这个
+python scripts/sync_version.py --expect-tag v1.4.0    # 断言 tag 与 versionName 一致；发版工作流用
 ```
 
 校验的不变量：
@@ -130,12 +133,11 @@ python scripts/sync_version.py --check    # 只校验不写文件；CI 也跑这
 | 工作流 | 触发 | 做什么 |
 | --- | --- | --- |
 | `.github/workflows/ci.yml` | push 到 master / 任何 PR / 手动 | 版本号校验 + `assembleDebug`（lint 目前只报告不拦截）。不需要任何密钥，fork 的 PR 也能安全跑 |
-| `.github/workflows/release.yml` | 手动触发（`push: tags` 已注释掉，Secrets 配好并验证通过后再打开） | 构建签名 APK 并上传为 GitHub Release asset |
+| `.github/workflows/release.yml` | push `v*` tag 自动发版；手动触发保留，用于失败重跑（会覆盖已有 asset） | 校验 tag 与 versionName 一致 → 构建签名 APK → 创建 Release 并上传 asset |
 
-启用 release 工作流前，需要先在仓库 Settings → Secrets and variables → Actions 配好
+release 工作流需要在仓库 Settings → Secrets and variables → Actions 配好
 `KEYSTORE_BASE64`（`base64 -w0 water_keystore.jks`）、`STORE_PASSWORD`、`KEY_ALIAS`、`KEY_PASSWORD`；
 没配的话它会在第一步明确报错退出，不会静默产出未签名包。
-等它验证跑通一次，再把文件里的 `push: tags` 打开，就能变成"打 tag 即发版"。
 
 ## 项目结构
 
