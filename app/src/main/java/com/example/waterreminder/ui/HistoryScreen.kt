@@ -1,14 +1,17 @@
 package com.example.waterreminder.ui
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -32,7 +35,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -131,35 +136,57 @@ fun HistoryScreen(
                 .padding(padding)
                 .padding(horizontal = 16.dp)
         ) {
-            // 日期统计卡片
-            DateSummaryCard(
-                date = selectedDate,
-                total = selectedTotal ?: 0,
-                recordCount = selectedRecords.size,
-                goal = goal,
-                onToggleCalendar = { showCalendar = !showCalendar },
-                showCalendar = showCalendar
-            )
+            // 日历收起时，在统计卡区域向下划可重新展开
+            val expandDragThreshold = with(LocalDensity.current) { 48.dp.toPx() }
+            var expandDrag by remember { mutableFloatStateOf(0f) }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Column(
+                modifier = Modifier.pointerInput(showCalendar) {
+                    if (!showCalendar) {
+                        detectVerticalDragGestures(
+                            onDragStart = { expandDrag = 0f },
+                            onDragCancel = { expandDrag = 0f },
+                            onDragEnd = {
+                                if (expandDrag >= expandDragThreshold) showCalendar = true
+                                expandDrag = 0f
+                            }
+                        ) { _, dragAmount -> expandDrag += dragAmount }
+                    }
+                }
+            ) {
+                // 日期统计卡片
+                DateSummaryCard(
+                    date = selectedDate,
+                    total = selectedTotal ?: 0,
+                    recordCount = selectedRecords.size,
+                    goal = goal,
+                    onToggleCalendar = { showCalendar = !showCalendar },
+                    showCalendar = showCalendar
+                )
 
-            // 最近 7 天统计图
-            WeeklyStatsCard(weekData = weekData, goal = goal)
+                Spacer(modifier = Modifier.height(12.dp))
 
-            Spacer(modifier = Modifier.height(12.dp))
+                // 最近 7 天统计图
+                WeeklyStatsCard(weekData = weekData, goal = goal)
+            }
 
-            // 日历视图（可折叠）
+            // 日历视图（整块可折叠：上滑收起）
             AnimatedVisibility(
                 visible = showCalendar,
-                enter = fadeIn(),
-                exit = fadeOut()
+                enter = expandVertically(expandFrom = Alignment.Top) + fadeIn(),
+                exit = shrinkVertically(shrinkTowards = Alignment.Top) + fadeOut()
             ) {
-                CalendarView(
-                    dailyTotals = allTotals,
-                    selectedDate = selectedDate,
-                    goal = goal,
-                    onDateSelected = { selectedDate = it }
-                )
+                Column {
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    CalendarView(
+                        dailyTotals = allTotals,
+                        selectedDate = selectedDate,
+                        goal = goal,
+                        onCollapse = { showCalendar = false },
+                        onDateSelected = { selectedDate = it }
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -502,6 +529,7 @@ fun CalendarView(
     dailyTotals: List<DailyTotal>,
     selectedDate: String,
     goal: Int,
+    onCollapse: () -> Unit,
     onDateSelected: (String) -> Unit
 ) {
     var currentMonth by remember { mutableStateOf(YearMonth.now()) }
@@ -513,17 +541,43 @@ fun CalendarView(
     val totalCells = firstDayWeekday + daysInMonth
     val rows = (totalCells + 6) / 7
 
+    // 上滑收起：累计拖动位移超过阈值才触发，避免误触
+    val dragThreshold = with(LocalDensity.current) { 48.dp.toPx() }
+    var accumulatedDrag by remember { mutableFloatStateOf(0f) }
+
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .pointerInput(Unit) {
+                detectVerticalDragGestures(
+                    onDragStart = { accumulatedDrag = 0f },
+                    onDragCancel = { accumulatedDrag = 0f },
+                    onDragEnd = {
+                        if (accumulatedDrag <= -dragThreshold) onCollapse()
+                        accumulatedDrag = 0f
+                    }
+                ) { _, dragAmount -> accumulatedDrag += dragAmount }
+            },
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
+            // 拖拽手柄
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .width(36.dp)
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f))
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
             // 月份导航
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 FilledTonalIconButton(
@@ -538,7 +592,10 @@ fun CalendarView(
                     )
                 }
 
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
                     Text(
                         text = "${currentMonth.year}年",
                         fontSize = 13.sp,
@@ -663,6 +720,31 @@ fun CalendarView(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // 上滑收起提示（也可点击）
+            Row(
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable { onCollapse() }
+                    .padding(horizontal = 10.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.ArrowDropUp,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(2.dp))
+                Text(
+                    text = "上滑收起日历",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }
