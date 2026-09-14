@@ -1,7 +1,7 @@
 {
   "versionCode": 6,
   "versionName": "1.3.1",
-  "apkUrl": "https://os233.github.io/WaterReminder/app/release/WaterReminder_v1.3.1_release.apk",
+  "apkUrl": "https://github.com/os233/WaterReminder/releases/download/v1.3.1/WaterReminder_v1.3.1_release.apk",
   "changelog": "更新内容：\n1. 修复饮品类型选择器在窄屏下文字换行甚至竖排的问题：5 个选项改为 3+2 两行网格布局",
   "forceUpdate": false
 }

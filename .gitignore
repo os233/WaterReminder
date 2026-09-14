@@ -24,5 +24,7 @@ keystore.properties
 # 其他 AI 工具的本地状态（会话计划文件等）
 /.zcode/
 
-# 注意：app/release/*.apk 是有意入库的，不要忽略。
-# GitHub Pages 从 master 根目录发布，应用内更新直接下载这里的 APK。
+# ---- 已发布的 APK 归档：不入库 ----
+# APK 走 GitHub Releases 分发（.github/workflows/release.yml），不再随仓库增长。
+# 本目录只剩本地留档作用（release.sh 会把产物复制到这里），CI 上不存在。
+/app/release/

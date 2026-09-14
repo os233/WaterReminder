@@ -37,14 +37,14 @@ Kotlin + Jetpack Compose 编写，无广告、无账号、无联网上传（只�
 - 支持多选删除
 
 **更新**
-- 启动时检查 GitHub Pages 上的 `version.json`，有新版本时提示下载安装
+- 启动时检查 `version.json`，有新版本时提示下载安装（APK 从 GitHub Releases 下载）
 
 ## 下载
 
-最新版本从 GitHub Pages 获取：
+最新版本从 [GitHub Releases](https://github.com/os233/WaterReminder/releases) 获取：
 
-- 版本信息：<https://os233.github.io/WaterReminder/version.json>
-- 应用内「检查更新」会自动读取上面的地址
+- 版本信息：<https://os233.github.io/WaterReminder/version.json>（GitHub Pages 仍托管这个 JSON）
+- 应用内「检查更新」读取上面的地址，再按其中的 `apkUrl` 到 Releases 下载 APK
 
 ## 环境要求
 
@@ -90,16 +90,23 @@ cp keystore.properties.example keystore.properties
 # 1. 改 app/build.gradle.kts 里的 versionCode 与 versionName（versionCode 必须严格递增）
 # 2. 一键构建 → 归档 → 同步版本号
 ./scripts/release.sh
-# 3. 手工补 version.json 的 changelog（脚本不动它），然后提交推送
+# 3. 手工补 version.json 的 changelog（脚本不动它）
+# 4. 先把 APK 发到 GitHub Release（顺序不能反，见下方说明）：
+#    - 打 tag：git tag v<版本号> && git push origin v<版本号>
+#    - 网页：Releases → Draft a new release，选该 tag，把
+#      app/release/WaterReminder_v<版本号>_release.apk 拖进 assets 发布
+#    - 或配好 Secrets 后跑 Actions → Release → Run workflow，填 tag 自动构建上传
+# 5. 再提交推送 version.json（它上线后老版本用户才会拿到新 apkUrl）
 git add -A && git commit -m "release: 发布 <版本号>" && git push origin master
 ```
 
 `scripts/release.sh` 依次做：校验 `keystore.properties` 存在 → `./gradlew assembleRelease` →
-产物归档到 `app/release/` → 同步 `version.json` 与 `app/release/output-metadata.json` →
-版本号一致性校验 → apksigner 签名自检（找不到工具就跳过并提示）。
+产物归档到 `app/release/`（本地留档，不入库）→ 同步 `version.json` 与
+`app/release/output-metadata.json` → 版本号一致性校验 → apksigner 签名自检（找不到工具就跳过并提示）。
 **它不会自动 commit / push** —— 发布是对外动作，留给人确认。
 
-GitHub Pages 从 `master` 分支根目录发布，push 后约 1 分钟生效。
+GitHub Pages 从 `master` 分支根目录发布，但只托管 `version.json`（APK 走 Releases），push 后约 1 分钟生效。
+**务必先让 Release 里的 APK 就位，再 push `version.json`**：否则旧版本用户检查更新时会拿到一个 404 的 `apkUrl`。
 
 **务必始终使用同一个密钥库**。签名不一致会导致老用户无法覆盖安装，只能卸载重装。
 
@@ -113,7 +120,8 @@ python scripts/sync_version.py --check    # 只校验不写文件；CI 也跑这
 
 - `version.json` 的 versionCode **不能比源码还新**（多半是升了它却忘了升 `app/build.gradle.kts`）
 - `apkUrl` 的文件名必须与 versionName 匹配
-- `apkUrl` 指向的产物必须真实存在于 `app/release/`，否则 Pages 上 404，应用内更新静默失败
+- `apkUrl` 指向 Releases 时脚本只给提示，**无法校验 asset 是否已上传** —— 发版后要自己确认
+  Release 里有这个文件，否则应用内更新会 404（Pages 形态则校验 `app/release/` 下文件是否存在）
 
 允许 `version.json` 落后于源码 —— 开发中先升源码版本号是正常的。
 
@@ -122,7 +130,7 @@ python scripts/sync_version.py --check    # 只校验不写文件；CI 也跑这
 | 工作流 | 触发 | 做什么 |
 | --- | --- | --- |
 | `.github/workflows/ci.yml` | push 到 master / 任何 PR / 手动 | 版本号校验 + `assembleDebug`（lint 目前只报告不拦截）。不需要任何密钥，fork 的 PR 也能安全跑 |
-| `.github/workflows/release.yml` | 手动触发（`push: tags` 已注释掉，暂未启用） | 构建签名 APK 并上传为 GitHub Release asset |
+| `.github/workflows/release.yml` | 手动触发（`push: tags` 已注释掉，Secrets 配好并验证通过后再打开） | 构建签名 APK 并上传为 GitHub Release asset |
 
 启用 release 工作流前，需要先在仓库 Settings → Secrets and variables → Actions 配好
 `KEYSTORE_BASE64`（`base64 -w0 water_keystore.jks`）、`STORE_PASSWORD`、`KEY_ALIAS`、`KEY_PASSWORD`；
@@ -132,12 +140,12 @@ python scripts/sync_version.py --check    # 只校验不写文件；CI 也跑这
 ## 项目结构
 
 ```
-├── .github/workflows/           # CI：ci.yml（版本号校验 + 编译）、release.yml（发版到 Release，未启用）
+├── .github/workflows/           # CI：ci.yml（版本号校验 + 编译）、release.yml（构建签名 APK 发到 Releases）
 ├── scripts/
 │   ├── release.sh               # 一键发版：构建 → 归档 → 同步版本号
 │   └── sync_version.py          # 同步 / 校验 version.json 与源码版本号
 ├── version.json                 # 应用内更新检查读取的版本信息（由脚本同步）
-├── app/release/                 # 已发布 APK 归档，GitHub Pages 从这里分发
+├── app/release/                 # 本地 APK 留档（已 gitignore，不入库；分发走 GitHub Releases）
 └── app/src/main/java/com/example/waterreminder/
     ├── MainActivity.kt              # 入口：初始化数据库、启动保活服务、NavHost、启动时检查更新
     ├── WaterReminderApp.kt          # Application（空实现，仅在清单中声明）
@@ -193,8 +201,8 @@ data class WaterRecord(
 - Android 13+ 需要授予通知权限；Android 12+ 需要「闹钟和提醒」权限，否则提醒不准时
 - 保活服务使用 `specialUse` 类型前台服务（`dataSync` 在 Android 15 上有 6 小时强制停止限制）
 - 部分国产 ROM 需要手动允许自启动与后台运行，否则提醒会被杀掉
-- **已知限制**：已发布的 APK 仍归档在 `app/release/` 并随仓库增长（每版约 11MB），
-  GitHub Pages 站点上限 1GB。彻底解法是迁到 GitHub Release asset（`release.yml` 已备好，见上文 CI 一节）
+- APK 不再入库，改由 GitHub Release asset 分发（`.github/workflows/release.yml`）；
+  `app/release/` 只作本地留档并已加入 `.gitignore`。迁移前 Pages 上的旧直链（`app/release/*.apk`）会随之失效
 
 ## 许可证
 

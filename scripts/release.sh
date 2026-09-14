@@ -2,6 +2,9 @@
 #
 # 一键发版（本地）：构建签名 release APK → 归档到 app/release/ → 同步 version.json 与元数据。
 #
+# 归档目录只作本地留档（已 gitignore）：APK 的分发走 GitHub Release asset，
+# 见 .github/workflows/release.yml。
+#
 # 刻意不做的事：不自动 commit / push。发布是对外动作，留给人确认。
 #
 # 用法：  ./scripts/release.sh
@@ -117,8 +120,9 @@ echo
 echo "──────────────────────────────────────────────"
 echo "接下来还需要手工做："
 echo "  1. 编辑 version.json 的 changelog（脚本不动它）"
-echo "  2. 提交：git add -A && git commit -m 'release: 发布 <版本号>'"
-echo "  3. 推送：git push origin master   （GitHub Pages 约 1 分钟后生效）"
+echo "  2. 先把 APK 发到 GitHub Release（tag v<版本号> + 上传 asset），这一步不能和 4 调换"
+echo "  3. 提交：git add -A && git commit -m 'release: 发布 <版本号>'"
+echo "  4. 推送：git push origin master   （version.json 上线后，旧版本用户才会拿到新 apkUrl）"
 echo
 echo "当前改动："
 git status --short

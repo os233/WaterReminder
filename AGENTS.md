@@ -40,7 +40,8 @@
   确认,代理不得 push 或发版。
 - 换行符以 `.gitattributes` 为准:文本一律 LF 入库,`*.bat` 为 CRLF;
   尤其 `gradlew` 必须保持 LF(CRLF 会让 Linux CI 直接挂)。
-- `app/release/` 是已发布 APK 归档(当前分发源是 Pages),除发版流程外不要动。
+- `app/release/` 是本地 APK 留档(已 gitignore,不入库);分发走 GitHub Release
+  asset,除发版流程外不要动。
 
 ## 项目检查
 
