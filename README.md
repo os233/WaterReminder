@@ -54,6 +54,7 @@ Kotlin + Jetpack Compose 编写，无广告、无账号、无联网上传（只�
 | Android SDK | compileSdk 36 对应的 platform |
 | Gradle | 8.11.1（wrapper 已内置，无需手动装） |
 | AGP / Kotlin | 8.10.1 / 2.0.21 |
+| Python | 3.9+（只有 `scripts/` 下的发版脚本用，不参与构建） |
 
 ## 构建
 
@@ -82,43 +83,82 @@ cp keystore.properties.example keystore.properties
 
 ## 发布流程
 
-1. 修改 `app/build.gradle.kts` 里的 `versionCode` 与 `versionName`
-2. `./gradlew assembleRelease`
-3. 把产物复制到 `app/release/`，并同步更新 `app/release/output-metadata.json`
-4. 更新根目录 `version.json`：
-   - `versionCode` 必须**严格大于**上一版，否则应用内不会提示更新
-   - `apkUrl` 指向新 APK 在 Pages 上的地址
-   - `changelog` 写本次更新内容（`\n` 分隔）
-5. commit 并 push 到 `master`
+版本号写在两处（`app/build.gradle.kts` 与 `version.json`），历史上出现过脱节 —— `version.json` 停在旧版本，
+导致应用内更新永远不触发。现在由脚本统一同步 + 校验。
+
+```bash
+# 1. 改 app/build.gradle.kts 里的 versionCode 与 versionName（versionCode 必须严格递增）
+# 2. 一键构建 → 归档 → 同步版本号
+./scripts/release.sh
+# 3. 手工补 version.json 的 changelog（脚本不动它），然后提交推送
+git add -A && git commit -m "release: 发布 <版本号>" && git push origin master
+```
+
+`scripts/release.sh` 依次做：校验 `keystore.properties` 存在 → `./gradlew assembleRelease` →
+产物归档到 `app/release/` → 同步 `version.json` 与 `app/release/output-metadata.json` →
+版本号一致性校验 → apksigner 签名自检（找不到工具就跳过并提示）。
+**它不会自动 commit / push** —— 发布是对外动作，留给人确认。
 
 GitHub Pages 从 `master` 分支根目录发布，push 后约 1 分钟生效。
 
 **务必始终使用同一个密钥库**。签名不一致会导致老用户无法覆盖安装，只能卸载重装。
 
+### 版本号一致性校验
+
+```bash
+python scripts/sync_version.py --check    # 只校验不写文件；CI 也跑这个
+```
+
+校验的不变量：
+
+- `version.json` 的 versionCode **不能比源码还新**（多半是升了它却忘了升 `app/build.gradle.kts`）
+- `apkUrl` 的文件名必须与 versionName 匹配
+- `apkUrl` 指向的产物必须真实存在于 `app/release/`，否则 Pages 上 404，应用内更新静默失败
+
+允许 `version.json` 落后于源码 —— 开发中先升源码版本号是正常的。
+
+### CI
+
+| 工作流 | 触发 | 做什么 |
+| --- | --- | --- |
+| `.github/workflows/ci.yml` | push 到 master / 任何 PR / 手动 | 版本号校验 + `assembleDebug`（lint 目前只报告不拦截）。不需要任何密钥，fork 的 PR 也能安全跑 |
+| `.github/workflows/release.yml` | 手动触发（`push: tags` 已注释掉，暂未启用） | 构建签名 APK 并上传为 GitHub Release asset |
+
+启用 release 工作流前，需要先在仓库 Settings → Secrets and variables → Actions 配好
+`KEYSTORE_BASE64`（`base64 -w0 water_keystore.jks`）、`STORE_PASSWORD`、`KEY_ALIAS`、`KEY_PASSWORD`；
+没配的话它会在第一步明确报错退出，不会静默产出未签名包。
+等它验证跑通一次，再把文件里的 `push: tags` 打开，就能变成"打 tag 即发版"。
+
 ## 项目结构
 
 ```
-app/src/main/java/com/example/waterreminder/
-├── MainActivity.kt              # 入口：初始化数据库、启动保活服务、NavHost、启动时检查更新
-├── WaterReminderApp.kt          # Application（空实现，仅在清单中声明）
-├── data/
-│   ├── WaterRecord.kt           # Room 实体
-│   ├── WaterRecordDao.kt        # 查询与统计
-│   ├── WaterDatabase.kt         # 数据库与迁移
-│   ├── DrinkType.kt             # 饮品类型与水合系数
-│   ├── UserPrefs.kt             # SharedPreferences（每日目标）
-│   └── remote/
-│       ├── UpdateChecker.kt     # 检查更新、下载安装
-│       └── UpdateInfo.kt        # version.json 结构
-├── notification/
-│   ├── AlarmManagerHelper.kt    # 闹钟调度、免打扰判断
-│   ├── AlarmReceiver.kt         # 提醒触发
-│   ├── BootReceiver.kt          # 开机恢复
-│   └── KeepAliveService.kt      # 前台保活服务
-└── ui/
-    ├── WaterReminderScreen.kt   # 首页
-    ├── HistoryScreen.kt         # 历史与统计
-    └── theme/                   # 主题配色
+├── .github/workflows/           # CI：ci.yml（版本号校验 + 编译）、release.yml（发版到 Release，未启用）
+├── scripts/
+│   ├── release.sh               # 一键发版：构建 → 归档 → 同步版本号
+│   └── sync_version.py          # 同步 / 校验 version.json 与源码版本号
+├── version.json                 # 应用内更新检查读取的版本信息（由脚本同步）
+├── app/release/                 # 已发布 APK 归档，GitHub Pages 从这里分发
+└── app/src/main/java/com/example/waterreminder/
+    ├── MainActivity.kt              # 入口：初始化数据库、启动保活服务、NavHost、启动时检查更新
+    ├── WaterReminderApp.kt          # Application（空实现，仅在清单中声明）
+    ├── data/
+    │   ├── WaterRecord.kt           # Room 实体
+    │   ├── WaterRecordDao.kt        # 查询与统计
+    │   ├── WaterDatabase.kt         # 数据库与迁移
+    │   ├── DrinkType.kt             # 饮品类型与水合系数
+    │   ├── UserPrefs.kt             # SharedPreferences（每日目标）
+    │   └── remote/
+    │       ├── UpdateChecker.kt     # 检查更新、下载安装
+    │       └── UpdateInfo.kt        # version.json 结构
+    ├── notification/
+    │   ├── AlarmManagerHelper.kt    # 闹钟调度、免打扰判断
+    │   ├── AlarmReceiver.kt         # 提醒触发
+    │   ├── BootReceiver.kt          # 开机恢复
+    │   └── KeepAliveService.kt      # 前台保活服务
+    └── ui/
+        ├── WaterReminderScreen.kt   # 首页
+        ├── HistoryScreen.kt         # 历史与统计
+        └── theme/                   # 主题配色
 ```
 
 ### 数据模型
@@ -147,9 +187,14 @@ data class WaterRecord(
 ## 注意事项
 
 - `keystore.properties` 与 `*.jks` 已在 `.gitignore` 中，**不要提交密钥库**
+- `local.properties` 也不再入库（含本机 SDK 绝对路径），clone 后用 Android Studio 打开会自动生成
+- 换行符由 `.gitattributes` 统一：文本文件一律 LF 入库，`*.bat` 保持 CRLF。
+  Linux CI 上 `./gradlew` 若是 CRLF 会直接报 `bash\r: No such file or directory`
 - Android 13+ 需要授予通知权限；Android 12+ 需要「闹钟和提醒」权限，否则提醒不准时
 - 保活服务使用 `specialUse` 类型前台服务（`dataSync` 在 Android 15 上有 6 小时强制停止限制）
 - 部分国产 ROM 需要手动允许自启动与后台运行，否则提醒会被杀掉
+- **已知限制**：已发布的 APK 仍归档在 `app/release/` 并随仓库增长（每版约 11MB），
+  GitHub Pages 站点上限 1GB。彻底解法是迁到 GitHub Release asset（`release.yml` 已备好，见上文 CI 一节）
 
 ## 许可证
 
