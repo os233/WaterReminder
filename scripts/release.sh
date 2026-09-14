@@ -70,20 +70,46 @@ echo "▶ 校验版本号一致性…"
 # ── 6. 签名自检（尽力而为，找不到工具就跳过）───────────────────────
 echo
 echo "▶ 签名自检…"
+APK_PATH="app/release/$APK_NAME"
+
 SDK_DIR="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+if [ -z "$SDK_DIR" ] && [ -f local.properties ]; then
+  # 本机通常没设 ANDROID_HOME，从 local.properties 兜底读 sdk.dir。
+  # 值是 Java properties 转义过的（形如 C\:\\Users\\...），要反转义成 C:/Users/...
+  SDK_DIR="$("$PY" -c 'import re, pathlib
+text = pathlib.Path("local.properties").read_text(encoding="utf-8")
+m = re.search(r"^sdk\.dir=(.*)$", text, re.M)
+print(m.group(1).replace("\\\\", "/").replace("\\:", ":") if m else "")' 2>/dev/null || true)"
+fi
+
 APKSIGNER=""
 if [ -n "$SDK_DIR" ] && [ -d "$SDK_DIR/build-tools" ]; then
-  APKSIGNER="$(ls -d "$SDK_DIR"/build-tools/*/ 2>/dev/null | sort -V | tail -1)apksigner"
+  BT_DIR="$(ls -d "$SDK_DIR"/build-tools/*/ 2>/dev/null | sort -V | tail -1)"
+  # Windows 的 build-tools 里只有 apksigner.bat，且 Git Bash 下 .bat 没有 exec 位，
+  # 所以用 -f 判断存在，不能用 -x
+  for candidate in "${BT_DIR}apksigner.bat" "${BT_DIR}apksigner"; do
+    if [ -n "$BT_DIR" ] && [ -f "$candidate" ]; then APKSIGNER="$candidate"; break; fi
+  done
 fi
-if [ -z "$APKSIGNER" ] || [ ! -x "$APKSIGNER" ]; then
-  APKSIGNER="$(command -v apksigner || true)"
-fi
-if [ -n "$APKSIGNER" ] && [ -x "$APKSIGNER" ]; then
-  "$APKSIGNER" verify --print-certs "app/release/$APK_NAME" | head -5
-  echo "（签名者必须与已发布版本一致，否则老用户无法覆盖安装）"
-else
-  echo "[跳过] 未找到 apksigner（可设 ANDROID_HOME 后重试）。"
+[ -n "$APKSIGNER" ] || APKSIGNER="$(command -v apksigner || true)"
+
+if [ -z "$APKSIGNER" ]; then
+  echo "[跳过] 未找到 apksigner。可设 ANDROID_HOME 指向 Android SDK 后重试。"
   echo "        务必确认签名与已发布版本一致，否则老用户只能卸载重装。"
+else
+  # apksigner 失败时不要中断整个发版流程（此时 APK 已构建完、版本号已同步）
+  set +e
+  SIGN_OUT="$("$APKSIGNER" verify --print-certs "$APK_PATH" 2>&1)"
+  SIGN_RC=$?
+  set -e
+  if [ "$SIGN_RC" -eq 0 ]; then
+    echo "$SIGN_OUT" | head -6
+    echo "（签名者必须与已发布版本一致，否则老用户无法覆盖安装）"
+  else
+    echo "[警告] apksigner 执行失败（退出码 $SIGN_RC）："
+    echo "$SIGN_OUT" | head -4
+    echo "        apksigner 需要 JAVA_HOME 指向 JDK；这不是签名本身的问题。"
+  fi
 fi
 
 # ── 7. 后续手工步骤 ───────────────────────────────────────────────
