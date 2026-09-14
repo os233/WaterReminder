@@ -26,6 +26,9 @@
 
 - `review` / `answer` / `monitor`:只读;除非用户明确授权,不改任何文件。
 - `change`:只做请求的工作及其必要后果。不重构无关代码,不顺手"优化"。
+- 提交前先看 `git status`:只提交任务相关文件,不相关的未跟踪残留(IDE
+  生成的配置、查 CI/接口的临时 JSON 等)不要被 `git add -A` 扫进提交;
+  一次性草稿用完即删,会反复出现的本地文件进 `.gitignore`。
 - 必要工作不越过明确的文件锁或更窄的边界;确需越界,先说明再动。
 
 ## 本仓库硬边界
@@ -40,7 +43,9 @@
 - Release 缺 `keystore.properties` 时在 `packageRelease` 阶段失败是
   **刻意设计**(避免产出装不上的未签名 APK),不要"修复"它。
 - `scripts/release.sh` 不自动 commit/push 也是**刻意设计**;未经用户明确
-  确认,代理不得 push 或发版。
+  确认,代理不得 push 或发版。**推 `v*` tag 即发版**:release 工作流会自动
+  构建签名 APK、发布 Release;推 `master` 则上线 Pages 的 `version.json`。
+  两者都是对外动作,须分别确认,顺序见 README「发布流程」。
 - 换行符以 `.gitattributes` 为准:文本一律 LF 入库,`*.bat` 为 CRLF;
   尤其 `gradlew` 必须保持 LF(CRLF 会让 Linux CI 直接挂)。
 - `app/release/` 是本地 APK 留档(已 gitignore,不入库);分发走 GitHub Release
