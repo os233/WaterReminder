@@ -1,0 +1,18 @@
+# 统一换行符。仓库里所有文本文件一律 LF 入库，避免两件事：
+#   1) 本机 core.autocrlf=true 把 CRLF 提交进去，Linux CI 上 gradlew / *.sh 直接报
+#      "bash\r: No such file or directory"；
+#   2) 同一个文件在不同机器上因换行符产生无意义的 diff。
+* text=auto eol=lf
+
+# Windows 批处理必须 CRLF，否则 cmd.exe 解析出错
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# 二进制，禁止任何换行符转换
+*.apk binary
+*.jar binary
+*.png binary
+*.jpg binary
+*.webp binary
+*.jks binary
+*.keystore binary

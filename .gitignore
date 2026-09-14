@@ -1,13 +1,28 @@
-# Project exclude paths
+# ---- Gradle / 构建产物 ----
 /.gradle/
+/build/
 /app/build/
-/app/build/intermediates/javac/debug/classes/
 /.kotlin/
 
-# 签名密钥与口令，绝不能入库
+# ---- IDE 本地状态（可共享的工程配置仍保留入库）----
+/.idea/caches/
+/.idea/codeStyles/
+/.idea/workspace.xml
+/.idea/shelf/
+*.iml
+
+# ---- 本机配置（含 SDK 绝对路径，各人不同）----
+local.properties
+
+# ---- 签名密钥与口令，绝不能入库 ----
 keystore.properties
 *.jks
 *.keystore
 
-# AI 助手的工作笔记（含本地路径等个人信息），公开仓库不入库
+# ---- AI 助手的工作笔记（含本地路径等个人信息），公开仓库不入库 ----
 /.workbuddy-ai/
+# 其他 AI 工具的本地状态（会话计划文件等）
+/.zcode/
+
+# 注意：app/release/*.apk 是有意入库的，不要忽略。
+# GitHub Pages 从 master 根目录发布，应用内更新直接下载这里的 APK。
