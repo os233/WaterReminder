@@ -13,10 +13,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
@@ -130,11 +130,18 @@ fun HistoryScreen(
             )
         }
     ) { padding ->
+        // 日历展开时，上方三块固定高度的卡片会顶破屏幕，把日历底部和记录列表裁掉。
+        // 这种情况下让整页可滚动，被裁的部分就能滑到；日历收起时维持原来的布局（列表撑满剩余高度）。
+        val pageScrollable = showCalendar
+        val pageScrollState = rememberScrollState()
+        val recordScrollState = rememberScrollState()
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
                 .padding(horizontal = 16.dp)
+                .then(if (pageScrollable) Modifier.verticalScroll(pageScrollState) else Modifier)
         ) {
             // 日历收起时，在统计卡区域向下划可重新展开
             val expandDragThreshold = with(LocalDensity.current) { 48.dp.toPx() }
@@ -195,12 +202,20 @@ fun HistoryScreen(
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f),
+                    .then(
+                        // 整页可滚动时不能再用 weight（父级高度无界），改给一个最小高度
+                        if (pageScrollable) Modifier.heightIn(min = 220.dp)
+                        else Modifier.weight(1f)
+                    ),
                 shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
-                Column(modifier = Modifier.fillMaxSize()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .then(if (pageScrollable) Modifier else Modifier.fillMaxSize())
+                ) {
                     // 标题行
                     Row(
                         modifier = Modifier
@@ -251,7 +266,10 @@ fun HistoryScreen(
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .weight(1f),
+                                .then(
+                                    if (pageScrollable) Modifier.heightIn(min = 140.dp)
+                                    else Modifier.weight(1f)
+                                ),
                             contentAlignment = Alignment.Center
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -270,12 +288,18 @@ fun HistoryScreen(
                             }
                         }
                     } else {
-                        LazyColumn(
-                            modifier = Modifier.weight(1f),
-                            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                        // 整页可滚动时列表跟着页面滚，否则在卡片内部滚（等价于原来的 LazyColumn 行为）
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .then(
+                                    if (pageScrollable) Modifier
+                                    else Modifier.weight(1f).verticalScroll(recordScrollState)
+                                )
+                                .padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            items(selectedRecords, key = { it.id }) { record ->
+                            selectedRecords.forEach { record ->
                                 HistoryRecordItem(
                                     record = record,
                                     onLongClick = { deleteRecord(record) }
