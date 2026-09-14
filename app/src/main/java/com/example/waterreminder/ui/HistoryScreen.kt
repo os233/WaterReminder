@@ -142,6 +142,9 @@ fun HistoryScreen(
                 .padding(padding)
                 .padding(horizontal = 16.dp)
                 .then(if (pageScrollable) Modifier.verticalScroll(pageScrollState) else Modifier)
+                // Scaffold 只避让到导航栏边界，放在滚动之后让留白跟随内容：
+                // 滑到底时详细记录卡片与手势条之间仍有间距，不会贴死被裁
+                .padding(bottom = 16.dp)
         ) {
             // 日历收起时，在统计卡区域向下划可重新展开
             val expandDragThreshold = with(LocalDensity.current) { 48.dp.toPx() }
