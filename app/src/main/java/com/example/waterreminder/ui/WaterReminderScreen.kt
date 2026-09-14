@@ -35,6 +35,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -53,6 +54,15 @@ import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+
+/**
+ * 矮视口判断：MuMu 模拟器（1080×1920 @ 480DPI）折算后只有 360×640dp，
+ * 小屏手机也普遍在这个量级。此时固定的大尺寸主视觉会占满一屏，
+ * 需要整体收紧；常规手机（高度 ≥ 700dp）维持原设计。
+ */
+@Composable
+internal fun isCompactViewport(): Boolean =
+    LocalConfiguration.current.screenHeightDp < 700
 
 @Composable
 fun WaterReminderScreen(
@@ -110,6 +120,9 @@ fun WaterReminderScreen(
         today.format(DateTimeFormatter.ofPattern("yyyy年M月d日 EEEE"))
     }
 
+    val compact = isCompactViewport()
+    val heroCircle = if (compact) 160.dp else 200.dp
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -123,7 +136,7 @@ fun WaterReminderScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 20.dp),
+                .padding(bottom = if (compact) 12.dp else 20.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -186,7 +199,7 @@ fun WaterReminderScreen(
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 24.dp),
+                .padding(bottom = if (compact) 16.dp else 24.dp),
             shape = RoundedCornerShape(24.dp),
             colors = CardDefaults.cardColors(containerColor = Color.Transparent),
             elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
@@ -203,25 +216,25 @@ fun WaterReminderScreen(
                         ),
                         shape = RoundedCornerShape(24.dp)
                     )
-                    .padding(24.dp),
+                    .padding(if (compact) 16.dp else 24.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Box(
-                        modifier = Modifier.size(200.dp),
+                        modifier = Modifier.size(heroCircle),
                         contentAlignment = Alignment.Center
                     ) {
                         // 外圈装饰
                         Box(
                             modifier = Modifier
-                                .size(200.dp)
+                                .size(heroCircle)
                                 .clip(CircleShape)
                                 .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.5f))
                         )
                         CircularProgressIndicator(
                             progress = { animatedProgress },
-                            modifier = Modifier.size(170.dp),
-                            strokeWidth = 14.dp,
+                            modifier = Modifier.size(if (compact) 134.dp else 170.dp),
+                            strokeWidth = if (compact) 10.dp else 14.dp,
                             color = MaterialTheme.colorScheme.primary,
                             trackColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f)
                         )
@@ -233,12 +246,12 @@ fun WaterReminderScreen(
                                 imageVector = Icons.Outlined.WaterDrop,
                                 contentDescription = null,
                                 tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(28.dp)
+                                modifier = Modifier.size(if (compact) 20.dp else 28.dp)
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 text = "${todayTotal ?: 0}",
-                                fontSize = 40.sp,
+                                fontSize = if (compact) 28.sp else 40.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer
                             )
@@ -296,7 +309,7 @@ fun WaterReminderScreen(
                             }
                         }
                     }
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(if (compact) 10.dp else 16.dp))
                     val statusText = when {
                         (todayTotal ?: 0) >= goal -> "🎉 目标达成！太棒了！"
                         (todayTotal ?: 0) >= goal / 2 -> "💪 已经完成一半了！"

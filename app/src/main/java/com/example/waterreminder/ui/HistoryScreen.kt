@@ -358,6 +358,8 @@ fun DateSummaryCard(
 ) {
     val percent = (total.toFloat() / goal).coerceIn(0f, 1f)
     val isToday = date == LocalDate.now().toString()
+    // 矮视口（MuMu/小屏手机）下收紧汇总卡，给日历和周统计多留可见空间
+    val compact = isCompactViewport()
 
     Card(
         onClick = onToggleCalendar,
@@ -368,7 +370,7 @@ fun DateSummaryCard(
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
-        Column(modifier = Modifier.padding(20.dp)) {
+        Column(modifier = Modifier.padding(if (compact) 14.dp else 20.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -399,7 +401,7 @@ fun DateSummaryCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(if (compact) 10.dp else 16.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -409,7 +411,7 @@ fun DateSummaryCard(
                 Column {
                     Text(
                         text = "$total",
-                        fontSize = 36.sp,
+                        fontSize = if (compact) 28.sp else 36.sp,
                         fontWeight = FontWeight.ExtraBold,
                         color = MaterialTheme.colorScheme.onPrimaryContainer
                     )
@@ -423,14 +425,14 @@ fun DateSummaryCard(
                 Column(horizontalAlignment = Alignment.End) {
                     Box(
                         modifier = Modifier
-                            .size(56.dp)
+                            .size(if (compact) 46.dp else 56.dp)
                             .clip(CircleShape)
                             .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.6f)),
                         contentAlignment = Alignment.Center
                     ) {
                         CircularProgressIndicator(
                             progress = { percent },
-                            modifier = Modifier.size(48.dp),
+                            modifier = Modifier.size(if (compact) 38.dp else 48.dp),
                             strokeWidth = 4.dp,
                             color = if (percent >= 1f) Color(0xFF4CAF50) else MaterialTheme.colorScheme.primary,
                             trackColor = MaterialTheme.colorScheme.surfaceVariant
