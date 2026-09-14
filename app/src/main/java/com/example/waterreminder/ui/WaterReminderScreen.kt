@@ -335,27 +335,46 @@ fun WaterReminderScreen(
             color = MaterialTheme.colorScheme.onBackground,
             modifier = Modifier.padding(bottom = 8.dp)
         )
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(bottom = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            DrinkType.entries.forEach { drink ->
-                FilterChip(
-                    selected = selectedDrink == drink,
-                    onClick = { selectedDrink = drink },
-                    label = { Text(drink.label, fontSize = 12.sp) },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = drink.icon,
-                            contentDescription = null,
-                            tint = drink.color,
-                            modifier = Modifier.size(16.dp)
+            // 一行最多 3 个：5 个挤一行时每个只剩约 60dp，图标加"气泡水"会被迫换行
+            DrinkType.entries.chunked(3).forEach { rowDrinks ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    rowDrinks.forEach { drink ->
+                        FilterChip(
+                            selected = selectedDrink == drink,
+                            onClick = { selectedDrink = drink },
+                            label = {
+                                Text(
+                                    text = drink.label,
+                                    fontSize = 13.sp,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = drink.icon,
+                                    contentDescription = null,
+                                    tint = drink.color,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            },
+                            modifier = Modifier.weight(1f)
                         )
-                    },
-                    modifier = Modifier.weight(1f)
-                )
+                    }
+                    // 补空位，让最后一行的 chip 与上一行列宽对齐
+                    repeat(3 - rowDrinks.size) {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+                }
             }
         }
 
