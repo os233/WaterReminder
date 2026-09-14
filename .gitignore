@@ -9,6 +9,8 @@
 /.idea/codeStyles/
 /.idea/workspace.xml
 /.idea/shelf/
+# IDE 插件生成的设置（Markdown 预览面板选择），不跟踪
+/.idea/markdown.xml
 *.iml
 
 # ---- 本机配置（含 SDK 绝对路径，各人不同）----
