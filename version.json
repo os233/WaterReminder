@@ -1,7 +1,7 @@
 {
-  "versionCode": 5,
-  "versionName": "1.3.0",
-  "apkUrl": "https://os233.github.io/WaterReminder/app/release/WaterReminder_v1.3.0_release.apk",
-  "changelog": "更新内容：\n1. 新增饮品类型：水 / 茶 / 咖啡 / 果汁 / 气泡水，按水合系数折算计入每日饮水量\n2. 新增每日目标设置与连续达标天数统计\n3. 新增免打扰时段，可自定义起止时间（支持跨午夜）\n4. 历史记录页改版：新增周统计、日历视图、按日汇总，支持删除单条记录\n5. 修复 Android 15 上保活服务被系统强制停止导致提醒失效的问题\n6. 全面屏适配，优化更新下载与安装流程",
+  "versionCode": 6,
+  "versionName": "1.3.1",
+  "apkUrl": "https://os233.github.io/WaterReminder/app/release/WaterReminder_v1.3.1_release.apk",
+  "changelog": "更新内容：\n1. 修复饮品类型选择器在窄屏下文字换行甚至竖排的问题：5 个选项改为 3+2 两行网格布局",
   "forceUpdate": false
 }
