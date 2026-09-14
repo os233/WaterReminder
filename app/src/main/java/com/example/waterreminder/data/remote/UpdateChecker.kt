@@ -9,6 +9,8 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.Settings
+import android.widget.Toast
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
@@ -26,19 +28,21 @@ class UpdateChecker(private val context: Context) {
     suspend fun checkForUpdate(): UpdateInfo? = withContext(Dispatchers.IO) {
         try {
             val request = Request.Builder().url(versionUrl).build()
-            val response = client.newCall(request).execute()
-            if (!response.isSuccessful) return@withContext null
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@withContext null
 
-            val body = response.body?.string() ?: return@withContext null
-            val info = gson.fromJson(body, UpdateInfo::class.java)
+                val body = response.body?.string() ?: return@withContext null
+                val info = gson.fromJson(body, UpdateInfo::class.java)
 
-            val currentVersion = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                context.packageManager.getPackageInfo(context.packageName, 0).longVersionCode
-            } else {
-                context.packageManager.getPackageInfo(context.packageName, 0).versionCode.toLong()
+                val currentVersion = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    context.packageManager.getPackageInfo(context.packageName, 0).longVersionCode
+                } else {
+                    @Suppress("DEPRECATION")
+                    context.packageManager.getPackageInfo(context.packageName, 0).versionCode.toLong()
+                }
+
+                if (info.versionCode > currentVersion) info else null
             }
-
-            if (info.versionCode > currentVersion) info else null
         } catch (e: Exception) {
             e.printStackTrace()
             null
@@ -81,7 +85,21 @@ class UpdateChecker(private val context: Context) {
                 val id = intent?.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1) ?: return
                 if (id != downloadId) return
 
-                context.unregisterReceiver(this)
+                try {
+                    context.unregisterReceiver(this)
+                } catch (_: IllegalArgumentException) {
+                }
+
+                // 通过 DownloadManager 查询真实的下载结果，而不是只看文件是否存在
+                val query = DownloadManager.Query().setFilterById(downloadId)
+                dm.query(query)?.use { cursor ->
+                    if (!cursor.moveToFirst()) return
+                    val statusIdx = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS)
+                    if (statusIdx >= 0 && cursor.getInt(statusIdx) != DownloadManager.STATUS_SUCCESSFUL) {
+                        Toast.makeText(context, "下载失败，请稍后重试", Toast.LENGTH_LONG).show()
+                        return
+                    }
+                }
 
                 val file = File(downloadDir, fileName)
                 if (!file.exists()) return
@@ -101,6 +119,11 @@ class UpdateChecker(private val context: Context) {
             }
         }
 
-        context.registerReceiver(receiver, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE))
+        ContextCompat.registerReceiver(
+            context,
+            receiver,
+            IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
     }
 }

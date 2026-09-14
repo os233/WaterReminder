@@ -3,21 +3,31 @@ package com.example.waterreminder.ui
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.outlined.LocalDrink
 import androidx.compose.material.icons.outlined.WaterDrop
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -25,15 +35,23 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.waterreminder.data.DailyTotal
+import com.example.waterreminder.data.DrinkType
+import com.example.waterreminder.data.UserPrefs
+import com.example.waterreminder.data.WaterRecord
 import com.example.waterreminder.data.WaterRecordDao
 import com.example.waterreminder.notification.AlarmManagerHelper
 import com.example.waterreminder.notification.KeepAliveService
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.time.Duration
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
 @Composable
@@ -42,28 +60,63 @@ fun WaterReminderScreen(
     onHistoryClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val GOAL = 2000
 
-    val todayTotal by dao.getTodayTotal().collectAsState(initial = 0)
+    var goal by remember { mutableIntStateOf(UserPrefs.getDailyGoal(context)) }
+    var showGoalDialog by remember { mutableStateOf(false) }
+    var selectedDrink by remember { mutableStateOf(DrinkType.WATER) }
+    var showCustomDialog by remember { mutableStateOf(false) }
+    var customAmount by remember { mutableStateOf("") }
 
-    val percent = (todayTotal?.toFloat() ?: 0f) / GOAL
+    // 跟踪"今天"是哪天：跨过午夜后自动刷新，避免界面停留在昨天的数据
+    var today by remember { mutableStateOf(LocalDate.now()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            val now = LocalDateTime.now()
+            val nextMidnight = now.toLocalDate().plusDays(1).atStartOfDay()
+            delay(Duration.between(now, nextMidnight).toMillis() + 1_000)
+            today = LocalDate.now()
+        }
+    }
+
+    val todayTotal by remember(today) {
+        dao.getTodayTotal(today.toString())
+    }.collectAsState(initial = 0)
+    val allTotals by dao.getAllDailyTotals().collectAsState(initial = emptyList())
+
+    val percent = (todayTotal?.toFloat() ?: 0f) / goal
     val animatedProgress by animateFloatAsState(
         targetValue = percent.coerceIn(0f, 1f),
         label = "progress"
     )
 
-    var showCustomDialog by remember { mutableStateOf(false) }
-    var customAmount by remember { mutableStateOf("") }
+    val streak = remember(allTotals, goal) { computeStreak(allTotals, goal) }
 
-    val currentDate = remember {
-        LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy年M月d日 EEEE"))
+    // 首次达成今日目标时播放一次庆祝动画（本次会话内不重复）
+    val goalReached = (todayTotal ?: 0) >= goal
+    var celebrate by remember { mutableStateOf(false) }
+    var celebrated by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(goalReached) {
+        if (goalReached && !celebrated) {
+            celebrated = true
+            celebrate = true
+            delay(2600)
+            celebrate = false
+        }
+    }
+
+    val currentDate = remember(today) {
+        today.format(DateTimeFormatter.ofPattern("yyyy年M月d日 EEEE"))
     }
 
     Column(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            // edge-to-edge：避开状态栏、手势条与刘海区域
+            .windowInsetsPadding(WindowInsets.safeDrawing)
+            .verticalScroll(rememberScrollState())
             .padding(16.dp)
     ) {
         // Header
@@ -87,16 +140,45 @@ fun WaterReminderScreen(
                     fontSize = 13.sp
                 )
             }
-            // 历史按钮 - 圆形图标按钮
-            FilledTonalIconButton(
-                onClick = onHistoryClick,
-                modifier = Modifier.size(48.dp)
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = Icons.Default.DateRange,
-                    contentDescription = "历史记录",
-                    modifier = Modifier.size(24.dp)
-                )
+                if (streak > 0) {
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.tertiaryContainer
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.LocalFireDepartment,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "连续 $streak 天",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onTertiaryContainer
+                            )
+                        }
+                    }
+                }
+                FilledTonalIconButton(
+                    onClick = onHistoryClick,
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.DateRange,
+                        contentDescription = "历史记录",
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
             }
         }
 
@@ -160,11 +242,24 @@ fun WaterReminderScreen(
                                 fontWeight = FontWeight.ExtraBold,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer
                             )
-                            Text(
-                                text = "/ $GOAL ml",
-                                fontSize = 14.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            // 点击可修改每日目标
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.clickable { showGoalDialog = true }
+                            ) {
+                                Text(
+                                    text = "/ $goal ml",
+                                    fontSize = 14.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Icon(
+                                    imageVector = Icons.Default.Edit,
+                                    contentDescription = "修改目标",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                            }
                             Spacer(modifier = Modifier.height(4.dp))
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
@@ -179,19 +274,40 @@ fun WaterReminderScreen(
                                 )
                             }
                         }
+                        // 达标庆祝
+                        androidx.compose.animation.AnimatedVisibility(
+                            visible = celebrate,
+                            enter = scaleIn(initialScale = 0.4f) + fadeIn(),
+                            exit = scaleOut(targetScale = 1.15f) + fadeOut(),
+                            modifier = Modifier.align(Alignment.Center)
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(18.dp),
+                                color = MaterialTheme.colorScheme.primary,
+                                shadowElevation = 6.dp
+                            ) {
+                                Text(
+                                    text = "🎉 目标达成！",
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 18.sp,
+                                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp)
+                                )
+                            }
+                        }
                     }
                     Spacer(modifier = Modifier.height(16.dp))
                     val statusText = when {
-                        (todayTotal ?: 0) >= GOAL -> "🎉 目标达成！太棒了！"
-                        (todayTotal ?: 0) >= GOAL / 2 -> "💪 已经完成一半了！"
+                        (todayTotal ?: 0) >= goal -> "🎉 目标达成！太棒了！"
+                        (todayTotal ?: 0) >= goal / 2 -> "💪 已经完成一半了！"
                         (todayTotal ?: 0) > 0 -> "👍 继续加油！"
                         else -> "💧 开始喝水吧！"
                     }
-                    val statusBg = if ((todayTotal ?: 0) >= GOAL)
+                    val statusBg = if ((todayTotal ?: 0) >= goal)
                         MaterialTheme.colorScheme.tertiaryContainer
                     else
                         MaterialTheme.colorScheme.surface.copy(alpha = 0.7f)
-                    val statusColor = if ((todayTotal ?: 0) >= GOAL)
+                    val statusColor = if ((todayTotal ?: 0) >= goal)
                         MaterialTheme.colorScheme.onTertiaryContainer
                     else
                         MaterialTheme.colorScheme.onPrimaryContainer
@@ -211,26 +327,36 @@ fun WaterReminderScreen(
             }
         }
 
-        // 快速记录区域标题
+        // 饮料类型选择
+        Text(
+            text = "选择饮料",
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onBackground,
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(bottom = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            Icon(
-                imageVector = Icons.Outlined.LocalDrink,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(20.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = "快速记录",
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onBackground
-            )
+            DrinkType.entries.forEach { drink ->
+                FilterChip(
+                    selected = selectedDrink == drink,
+                    onClick = { selectedDrink = drink },
+                    label = { Text(drink.label, fontSize = 12.sp) },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = drink.icon,
+                            contentDescription = null,
+                            tint = drink.color,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+            }
         }
 
         // 快速记录按钮 - 大卡片式
@@ -242,23 +368,23 @@ fun WaterReminderScreen(
         ) {
             WaterAmountCard(
                 amount = 200,
-                icon = Icons.Outlined.LocalDrink,
-                color = Color(0xFF4FC3F7),
-                onClick = { scope.launch { dao.insert(com.example.waterreminder.data.WaterRecord(amount = 200)) } },
+                icon = selectedDrink.icon,
+                color = selectedDrink.color,
+                onClick = { recordDrink(scope, dao, selectedDrink, 200) },
                 modifier = Modifier.weight(1f)
             )
             WaterAmountCard(
                 amount = 350,
-                icon = Icons.Outlined.LocalDrink,
-                color = Color(0xFF29B6F6),
-                onClick = { scope.launch { dao.insert(com.example.waterreminder.data.WaterRecord(amount = 350)) } },
+                icon = selectedDrink.icon,
+                color = selectedDrink.color,
+                onClick = { recordDrink(scope, dao, selectedDrink, 350) },
                 modifier = Modifier.weight(1f)
             )
             WaterAmountCard(
                 amount = 500,
-                icon = Icons.Outlined.LocalDrink,
-                color = Color(0xFF039BE5),
-                onClick = { scope.launch { dao.insert(com.example.waterreminder.data.WaterRecord(amount = 500)) } },
+                icon = selectedDrink.icon,
+                color = selectedDrink.color,
+                onClick = { recordDrink(scope, dao, selectedDrink, 500) },
                 modifier = Modifier.weight(1f)
             )
         }
@@ -274,7 +400,7 @@ fun WaterReminderScreen(
             colors = ButtonDefaults.outlinedButtonColors(
                 contentColor = MaterialTheme.colorScheme.primary
             ),
-            border = ButtonDefaults.outlinedButtonBorder.copy(
+            border = ButtonDefaults.outlinedButtonBorder(enabled = true).copy(
                 brush = Brush.horizontalGradient(
                     listOf(
                         MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
@@ -302,21 +428,26 @@ fun WaterReminderScreen(
             onDismissRequest = { showCustomDialog = false },
             icon = {
                 Icon(
-                    imageVector = Icons.Outlined.WaterDrop,
+                    imageVector = selectedDrink.icon,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
+                    tint = selectedDrink.color,
                     modifier = Modifier.size(32.dp)
                 )
             },
-            title = { Text("输入饮水量") },
+            title = { Text("输入${selectedDrink.label}量") },
             text = {
                 OutlinedTextField(
                     value = customAmount,
                     onValueChange = { customAmount = it.filter { c -> c.isDigit() } },
-                    label = { Text("水量 (ml)") },
+                    label = { Text("${selectedDrink.label}量 (ml)") },
+                    supportingText = {
+                        if (selectedDrink.hydration < 1.0) {
+                            Text("按水合系数 ${(selectedDrink.hydration * 100).toInt()}% 折算计入总量")
+                        }
+                    },
                     singleLine = true,
                     leadingIcon = {
-                        Icon(Icons.Outlined.LocalDrink, contentDescription = null)
+                        Icon(selectedDrink.icon, contentDescription = null)
                     },
                     shape = RoundedCornerShape(12.dp)
                 )
@@ -325,7 +456,7 @@ fun WaterReminderScreen(
                 TextButton(onClick = {
                     customAmount.toIntOrNull()?.let {
                         if (it > 0 && it <= 5000) {
-                            scope.launch { dao.insert(com.example.waterreminder.data.WaterRecord(amount = it)) }
+                            recordDrink(scope, dao, selectedDrink, it)
                         }
                     }
                     showCustomDialog = false
@@ -342,6 +473,96 @@ fun WaterReminderScreen(
             shape = RoundedCornerShape(20.dp)
         )
     }
+
+    // 每日目标设置弹窗
+    if (showGoalDialog) {
+        var sliderValue by remember { mutableFloatStateOf(goal.toFloat()) }
+        AlertDialog(
+            onDismissRequest = { showGoalDialog = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.Flag,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(32.dp)
+                )
+            },
+            title = { Text("每日目标") },
+            text = {
+                Column {
+                    Text(
+                        text = "${sliderValue.toInt()} ml",
+                        fontSize = 32.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = MaterialTheme.colorScheme.primary,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Slider(
+                        value = sliderValue,
+                        onValueChange = { sliderValue = (it / 100).toInt() * 100f },
+                        valueRange = 1000f..4000f
+                    )
+                    Text(
+                        text = "范围 1000 – 4000 ml，步长 100",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val newGoal = sliderValue.toInt()
+                    goal = newGoal
+                    UserPrefs.setDailyGoal(context, newGoal)
+                    showGoalDialog = false
+                }) {
+                    Text("保存")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showGoalDialog = false }) {
+                    Text("取消")
+                }
+            },
+            shape = RoundedCornerShape(20.dp)
+        )
+    }
+}
+
+private fun recordDrink(
+    scope: kotlinx.coroutines.CoroutineScope,
+    dao: WaterRecordDao,
+    drink: DrinkType,
+    amount: Int
+) {
+    scope.launch {
+        dao.insert(
+            WaterRecord(
+                amount = amount,
+                drinkType = drink.id,
+                hydration = drink.hydration
+            )
+        )
+    }
+}
+
+/** 连续达标天数：今天未达标则从昨天起算，不因"还没喝"而清零 */
+private fun computeStreak(totals: List<DailyTotal>, goal: Int): Int {
+    if (totals.isEmpty()) return 0
+    val map = totals.associate { it.recordDate to it.total }
+    var date = LocalDate.now()
+    if ((map[date.toString()] ?: 0) < goal) {
+        date = date.minusDays(1)
+    }
+    var streak = 0
+    while ((map[date.toString()] ?: 0) >= goal) {
+        streak++
+        date = date.minusDays(1)
+    }
+    return streak
 }
 
 @Composable
@@ -416,10 +637,13 @@ fun WaterAmountCard(
 
 @Composable
 fun ReminderSection() {
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
     val helper = remember { AlarmManagerHelper(context) }
     var selectedInterval by remember { mutableIntStateOf(helper.getSavedInterval()) }
     var showDialog by remember { mutableStateOf(false) }
+    var dndEnabled by remember { mutableStateOf(helper.isDndEnabled()) }
+    var dndStart by remember { mutableIntStateOf(helper.getDndStartHour()) }
+    var dndEnd by remember { mutableIntStateOf(helper.getDndEndHour()) }
 
     LaunchedEffect(Unit) {
         selectedInterval = helper.getSavedInterval()
@@ -430,6 +654,7 @@ fun ReminderSection() {
     } else {
         "每${selectedInterval}小时提醒一次"
     }
+    val dndText = if (dndEnabled) " · ${"%02d".format(dndStart)}:00–${"%02d".format(dndEnd)}:00 免打扰" else ""
 
     Card(
         onClick = { showDialog = true },
@@ -475,7 +700,7 @@ fun ReminderSection() {
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = statusText,
+                        text = "$statusText$dndText",
                         fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -565,6 +790,48 @@ fun ReminderSection() {
                             }
                         }
                     }
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+
+                    // 夜间免打扰
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "夜间免打扰",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "免打扰时段内的提醒只顺延不弹通知",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = dndEnabled,
+                            onCheckedChange = {
+                                dndEnabled = it
+                                helper.setDndSettings(it, dndStart, dndEnd)
+                            }
+                        )
+                    }
+                    if (dndEnabled) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                            modifier = Modifier.padding(top = 4.dp)
+                        ) {
+                            HourPicker("开始", dndStart) { h ->
+                                dndStart = h
+                                helper.setDndSettings(dndEnabled, h, dndEnd)
+                            }
+                            HourPicker("结束", dndEnd) { h ->
+                                dndEnd = h
+                                helper.setDndSettings(dndEnabled, dndStart, h)
+                            }
+                        }
+                    }
                 }
             },
             confirmButton = {
@@ -574,6 +841,38 @@ fun ReminderSection() {
             },
             shape = RoundedCornerShape(20.dp)
         )
+    }
+}
+
+@Composable
+private fun HourPicker(label: String, hour: Int, onPick: (Int) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(label, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface)
+        Spacer(modifier = Modifier.width(8.dp))
+        Box {
+            FilledTonalButton(
+                onClick = { open = true },
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp)
+            ) {
+                Text("%02d:00".format(hour))
+            }
+            DropdownMenu(
+                expanded = open,
+                onDismissRequest = { open = false },
+                modifier = Modifier.heightIn(max = 280.dp)
+            ) {
+                (0..23).forEach { h ->
+                    DropdownMenuItem(
+                        text = { Text("%02d:00".format(h)) },
+                        onClick = {
+                            onPick(h)
+                            open = false
+                        }
+                    )
+                }
+            }
+        }
     }
 }
 

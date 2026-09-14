@@ -2,3 +2,12 @@
 /.gradle/
 /app/build/
 /app/build/intermediates/javac/debug/classes/
+/.kotlin/
+
+# 签名密钥与口令，绝不能入库
+keystore.properties
+*.jks
+*.keystore
+
+# AI 助手的工作笔记（含本地路径等个人信息），公开仓库不入库
+/.workbuddy-ai/

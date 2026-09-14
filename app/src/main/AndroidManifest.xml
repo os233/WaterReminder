@@ -8,14 +8,17 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
-    <uses-permission android:name="android.permission.WAKE_LOCK" />
+        <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+        <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+        <!-- Android 15 起 dataSync 类型前台服务有 6 小时强制停止限制，
+             常驻保活服务改用 specialUse 类型（无时长限制） -->
+        <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+        <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <application
         android:name=".WaterReminderApp"
         android:allowBackup="true"
+        android:enableOnBackInvokedCallback="true"
         android:icon="@mipmap/ic_launcher"
         android:label="喝水提醒"
         android:roundIcon="@mipmap/ic_launcher_round"
@@ -49,17 +52,11 @@
             android:name=".notification.KeepAliveService"
             android:enabled="true"
             android:exported="false"
-            android:foregroundServiceType="dataSync" />
-
-        <provider
-            android:name="androidx.startup.InitializationProvider"
-            android:authorities="${applicationId}.androidx-startup"
-            android:exported="false"
-            tools:node="merge">
-            <meta-data
-                android:name="androidx.work.WorkManagerInitializer"
-                android:value="androidx.startup" />
-        </provider>
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="常驻轻量通知以保障按小时触发的喝水提醒闹钟在后台可靠运行" />
+        </service>
 
         <provider
             android:name="androidx.core.content.FileProvider"

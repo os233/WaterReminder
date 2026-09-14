@@ -9,16 +9,29 @@ import android.content.Intent
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.example.waterreminder.MainActivity
+import com.example.waterreminder.R
 
 class AlarmReceiver : BroadcastReceiver() {
+
+    companion object {
+        // 固定 ID：新提醒覆盖上一条，避免通知栏越积越多
+        private const val REMINDER_NOTIFICATION_ID = 1001
+        private const val CHANNEL_ID = "water_reminder_channel"
+    }
+
     override fun onReceive(context: Context, intent: Intent) {
-        showNotification(context)
+        val helper = AlarmManagerHelper(context)
         val intervalHours = intent.getIntExtra("interval_hours", 1)
-        AlarmManagerHelper(context).setRepeatingAlarm(intervalHours)
+        // 无论是否免打扰都先排下一次，保证提醒链不断
+        helper.setRepeatingAlarm(intervalHours)
+        // 夜间免打扰时段内静默跳过本次通知
+        if (!helper.isQuietHoursNow()) {
+            showNotification(context)
+        }
     }
 
     private fun showNotification(context: Context) {
-        val channelId = "water_reminder_channel"
+        val channelId = CHANNEL_ID
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -42,7 +55,7 @@ class AlarmReceiver : BroadcastReceiver() {
         )
 
         val notification = NotificationCompat.Builder(context, channelId)
-            .setSmallIcon(android.R.drawable.ic_menu_add)
+            .setSmallIcon(R.drawable.ic_water_drop)
             .setContentTitle("该喝水啦！💧")
             .setContentText("保持水分充足，让身体更健康~")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -52,6 +65,6 @@ class AlarmReceiver : BroadcastReceiver() {
             .setVibrate(longArrayOf(0, 500, 200, 500))
             .build()
 
-        notificationManager.notify(System.currentTimeMillis().toInt(), notification)
+        notificationManager.notify(REMINDER_NOTIFICATION_ID, notification)
     }
 }

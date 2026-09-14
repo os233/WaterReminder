@@ -6,17 +6,29 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
+import androidx.core.app.ServiceCompat
 import com.example.waterreminder.MainActivity
+import com.example.waterreminder.R
 
 class KeepAliveService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
-        startForeground(1, createNotification())
+        val notification = createNotification()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            // API 34+ 必须显式声明前台服务类型，与 Manifest 中的 specialUse 对应
+            ServiceCompat.startForeground(
+                this, 1, notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            )
+        } else {
+            startForeground(1, notification)
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -46,7 +58,7 @@ class KeepAliveService : Service() {
         return NotificationCompat.Builder(this, channelId)
             .setContentTitle("喝水提醒运行中")
             .setContentText("定时提醒已开启")
-            .setSmallIcon(android.R.drawable.ic_menu_add)
+            .setSmallIcon(R.drawable.ic_water_drop)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .build()

@@ -6,6 +6,8 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverter
 import androidx.room.TypeConverters
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
@@ -23,12 +25,20 @@ class Converters {
     }
 }
 
-@Database(entities = [WaterRecord::class], version = 1, exportSchema = false)
+@Database(entities = [WaterRecord::class], version = 2, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class WaterDatabase : RoomDatabase() {
     abstract fun waterRecordDao(): WaterRecordDao
 
     companion object {
+        // v2：新增饮料类型与水合系数字段
+        private val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE water_records ADD COLUMN drinkType TEXT NOT NULL DEFAULT 'water'")
+                db.execSQL("ALTER TABLE water_records ADD COLUMN hydration REAL NOT NULL DEFAULT 1.0")
+            }
+        }
+
         @Volatile
         private var INSTANCE: WaterDatabase? = null
 
@@ -38,7 +48,10 @@ abstract class WaterDatabase : RoomDatabase() {
                     context.applicationContext,
                     WaterDatabase::class.java,
                     "water_database"
-                ).build().also { INSTANCE = it }
+                )
+                    .addMigrations(MIGRATION_1_2)
+                    .build()
+                    .also { INSTANCE = it }
             }
         }
     }

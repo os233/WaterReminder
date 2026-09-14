@@ -3,9 +3,12 @@ package com.example.waterreminder.ui
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -15,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.ArrowDropUp
+import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.WaterDrop
@@ -23,14 +27,19 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.waterreminder.data.DailyTotal
+import com.example.waterreminder.data.DrinkType
+import com.example.waterreminder.data.UserPrefs
 import com.example.waterreminder.data.WaterRecord
 import com.example.waterreminder.data.WaterRecordDao
 import kotlinx.coroutines.launch
@@ -44,7 +53,10 @@ fun HistoryScreen(
     dao: WaterRecordDao,
     onBack: () -> Unit
 ) {
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val goal = remember { UserPrefs.getDailyGoal(context) }
+    val snackbarHostState = remember { SnackbarHostState() }
     val allTotals by dao.getAllDailyTotals().collectAsState(initial = emptyList())
     var selectedDate by remember { mutableStateOf(LocalDate.now().toString()) }
     val selectedRecords by dao.getRecordsByDate(selectedDate).collectAsState(initial = emptyList())
@@ -52,7 +64,31 @@ fun HistoryScreen(
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showCalendar by remember { mutableStateOf(true) }
 
+    // 最近 7 天数据（缺失的日期补 0）
+    val weekData = remember(allTotals) {
+        val map = allTotals.associate { it.recordDate to it.total }
+        (6 downTo 0).map { offset ->
+            val d = LocalDate.now().minusDays(offset.toLong())
+            d to (map[d.toString()] ?: 0)
+        }
+    }
+
+    fun deleteRecord(record: WaterRecord) {
+        scope.launch {
+            dao.delete(record)
+            val result = snackbarHostState.showSnackbar(
+                message = "已删除 ${DrinkType.byId(record.drinkType).label} ${record.amount} ml",
+                actionLabel = "撤销",
+                duration = SnackbarDuration.Long
+            )
+            if (result == SnackbarResult.ActionPerformed) {
+                dao.insert(record.copy(id = 0))
+            }
+        }
+    }
+
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = {
@@ -100,9 +136,15 @@ fun HistoryScreen(
                 date = selectedDate,
                 total = selectedTotal ?: 0,
                 recordCount = selectedRecords.size,
+                goal = goal,
                 onToggleCalendar = { showCalendar = !showCalendar },
                 showCalendar = showCalendar
             )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // 最近 7 天统计图
+            WeeklyStatsCard(weekData = weekData, goal = goal)
 
             Spacer(modifier = Modifier.height(12.dp))
 
@@ -115,6 +157,7 @@ fun HistoryScreen(
                 CalendarView(
                     dailyTotals = allTotals,
                     selectedDate = selectedDate,
+                    goal = goal,
                     onDateSelected = { selectedDate = it }
                 )
             }
@@ -140,6 +183,12 @@ fun HistoryScreen(
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onBackground
+                    )
+                    Text(
+                        text = "（长按删除单条）",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 6.dp)
                     )
                 }
                 if (selectedRecords.isNotEmpty()) {
@@ -189,7 +238,10 @@ fun HistoryScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(selectedRecords, key = { it.id }) { record ->
-                        HistoryRecordItem(record = record)
+                        HistoryRecordItem(
+                            record = record,
+                            onLongClick = { deleteRecord(record) }
+                        )
                     }
                 }
             }
@@ -233,10 +285,10 @@ fun DateSummaryCard(
     date: String,
     total: Int,
     recordCount: Int,
+    goal: Int,
     onToggleCalendar: () -> Unit,
     showCalendar: Boolean
 ) {
-    val goal = 2000
     val percent = (total.toFloat() / goal).coerceIn(0f, 1f)
     val isToday = date == LocalDate.now().toString()
 
@@ -343,9 +395,113 @@ fun DateSummaryCard(
 }
 
 @Composable
+fun WeeklyStatsCard(weekData: List<Pair<LocalDate, Int>>, goal: Int) {
+    val reachedCount = weekData.count { it.second >= goal }
+    val validDays = weekData.count { it.second > 0 }
+    val avg = if (validDays > 0) weekData.sumOf { it.second } / validDays else 0
+    val reachedColor = Color(0xFF4CAF50)
+    val barColor = MaterialTheme.colorScheme.primary
+    val goalLineColor = MaterialTheme.colorScheme.outline
+    val labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.BarChart,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "最近 7 天",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                Text(
+                    text = "达标 $reachedCount/7 天",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Canvas(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(100.dp)
+            ) {
+                val maxVal = maxOf(goal.toFloat(), (weekData.maxOfOrNull { it.second } ?: 0).toFloat()) * 1.15f
+                val barWidth = size.width / weekData.size
+                weekData.forEachIndexed { index, (_, total) ->
+                    if (total > 0) {
+                        val barHeight = (size.height * (total / maxVal)).coerceAtLeast(4.dp.toPx())
+                        drawRoundRect(
+                            color = if (total >= goal) reachedColor else barColor,
+                            topLeft = Offset(index * barWidth + barWidth * 0.25f, size.height - barHeight),
+                            size = Size(barWidth * 0.5f, barHeight),
+                            cornerRadius = CornerRadius(5.dp.toPx(), 5.dp.toPx())
+                        )
+                    }
+                }
+                // 目标参考线（虚线）
+                val goalY = size.height * (goal / maxVal)
+                drawLine(
+                    color = goalLineColor,
+                    start = Offset(0f, goalY),
+                    end = Offset(size.width, goalY),
+                    strokeWidth = 1.5.dp.toPx(),
+                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 10f))
+                )
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Row(modifier = Modifier.fillMaxWidth()) {
+                weekData.forEach { (date, _) ->
+                    val isToday = date == LocalDate.now()
+                    Text(
+                        text = "日一二三四五六"[date.dayOfWeek.value % 7].toString(),
+                        modifier = Modifier.weight(1f),
+                        textAlign = TextAlign.Center,
+                        fontSize = 11.sp,
+                        fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal,
+                        color = if (isToday) barColor else labelColor
+                    )
+                }
+            }
+
+            if (avg > 0) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "有记录日均 $avg ml",
+                    fontSize = 12.sp,
+                    color = labelColor
+                )
+            }
+        }
+    }
+}
+
+@Composable
 fun CalendarView(
     dailyTotals: List<DailyTotal>,
     selectedDate: String,
+    goal: Int,
     onDateSelected: (String) -> Unit
 ) {
     var currentMonth by remember { mutableStateOf(YearMonth.now()) }
@@ -446,6 +602,7 @@ fun CalendarView(
                                 CalendarDayCell(
                                     day = dayNumber,
                                     total = total,
+                                    goal = goal,
                                     isSelected = dateStr == selectedDate,
                                     isToday = dateStr == today,
                                     onClick = { onDateSelected(dateStr) }
@@ -472,6 +629,19 @@ fun CalendarView(
                             .size(8.dp)
                             .clip(CircleShape)
                             .background(Color(0xFF4CAF50))
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "达标",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.tertiary)
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
@@ -502,11 +672,11 @@ fun CalendarView(
 fun CalendarDayCell(
     day: Int,
     total: Int,
+    goal: Int,
     isSelected: Boolean,
     isToday: Boolean,
     onClick: () -> Unit
 ) {
-    val goal = 2000
     val hasRecord = total > 0
     val isGoalReached = total >= goal
 
@@ -565,10 +735,15 @@ fun CalendarDayCell(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun HistoryRecordItem(record: WaterRecord) {
-    val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
-    val time = record.timestamp.format(timeFormatter)
+fun HistoryRecordItem(
+    record: WaterRecord,
+    onLongClick: () -> Unit
+) {
+    val drink = DrinkType.byId(record.drinkType)
+    val effective = (record.amount * record.hydration).toInt()
+    val time = record.timestamp.format(DateTimeFormatter.ofPattern("HH:mm"))
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -580,8 +755,12 @@ fun HistoryRecordItem(record: WaterRecord) {
     ) {
         Row(
             modifier = Modifier
-                .padding(14.dp)
-                .fillMaxWidth(),
+                .fillMaxWidth()
+                .combinedClickable(
+                    onClick = {},
+                    onLongClick = onLongClick
+                )
+                .padding(14.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -590,20 +769,13 @@ fun HistoryRecordItem(record: WaterRecord) {
                     modifier = Modifier
                         .size(40.dp)
                         .clip(CircleShape)
-                        .background(
-                            brush = Brush.linearGradient(
-                                colors = listOf(
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
-                                )
-                            )
-                        ),
+                        .background(drink.color.copy(alpha = 0.15f)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Default.WaterDrop,
+                        imageVector = drink.icon,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
+                        tint = drink.color,
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -616,7 +788,14 @@ fun HistoryRecordItem(record: WaterRecord) {
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = time,
+                        text = buildString {
+                            append(drink.label)
+                            append(" · ")
+                            append(time)
+                            if (record.hydration < 1.0) {
+                                append(" · 折合 $effective ml")
+                            }
+                        },
                         fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

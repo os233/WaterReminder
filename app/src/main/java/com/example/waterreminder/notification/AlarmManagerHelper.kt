@@ -17,6 +17,9 @@ class AlarmManagerHelper(private val context: Context) {
         const val PREFS_NAME = "water_reminder_prefs"
         const val KEY_INTERVAL = "reminder_interval_hours"
         const val KEY_ENABLED = "reminder_enabled"
+        const val KEY_DND_ENABLED = "dnd_enabled"
+        const val KEY_DND_START_HOUR = "dnd_start_hour"
+        const val KEY_DND_END_HOUR = "dnd_end_hour"
     }
 
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -104,5 +107,32 @@ class AlarmManagerHelper(private val context: Context) {
 
     fun getSavedInterval(): Int {
         return prefs.getInt(KEY_INTERVAL, 0)
+    }
+
+    fun isDndEnabled(): Boolean = prefs.getBoolean(KEY_DND_ENABLED, false)
+
+    fun getDndStartHour(): Int = prefs.getInt(KEY_DND_START_HOUR, 22)
+
+    fun getDndEndHour(): Int = prefs.getInt(KEY_DND_END_HOUR, 8)
+
+    fun setDndSettings(enabled: Boolean, startHour: Int, endHour: Int) {
+        prefs.edit()
+            .putBoolean(KEY_DND_ENABLED, enabled)
+            .putInt(KEY_DND_START_HOUR, startHour)
+            .putInt(KEY_DND_END_HOUR, endHour)
+            .apply()
+    }
+
+    /** 当前是否处于免打扰时段（支持跨午夜区间，如 22 点到次日 8 点） */
+    fun isQuietHoursNow(): Boolean {
+        if (!isDndEnabled()) return false
+        val hour = java.time.LocalTime.now().hour
+        val start = getDndStartHour()
+        val end = getDndEndHour()
+        return when {
+            start == end -> false
+            start < end -> hour in start until end
+            else -> hour >= start || hour < end
+        }
     }
 }

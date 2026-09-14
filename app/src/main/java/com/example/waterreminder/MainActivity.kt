@@ -11,6 +11,7 @@ import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.core.tween
@@ -60,6 +61,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Android 15+ 强制全面屏（targetSdk 35+ 系统忽略 opt-out），
+        // 统一在所有版本开启 edge-to-edge，由界面自行避让系统栏
+        enableEdgeToEdge()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
@@ -237,6 +242,7 @@ fun UpdateDialog(
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .heightIn(max = 180.dp)
                                 .padding(14.dp)
                                 .verticalScroll(rememberScrollState())
                         ) {
