@@ -3,7 +3,7 @@
 本文件约束在本仓库工作的 AI 代理。
 
 核心原则:**完整完成请求的任务,让真实需求驱动复杂度。** 不做投机性防御,
-不搞范围蔓延,不用额外流程表演勤奋。以下是它在本仓库的具体化。
+不搞范围蔓延,不用额外流程表演勤奋。以下是这些原则在本仓库的具体化。
 
 ## 停止阶梯
 
@@ -31,6 +31,9 @@
 ## 本仓库硬边界
 
 - **永不提交** `keystore.properties`、`*.jks`、`local.properties`。
+- 敏感信息一律脱敏后再输出:`keystore.properties`、`*.jks`、`local.properties`
+  的内容只描述存在与用途,不回显明文密码、口令、别名;汇报、日志、提交
+  信息、文档中出现的密钥、token、口令,用 `***` 或 `<redacted>` 替代。
 - `versionCode` 严格递增(脚本只能防 `version.json` 回退,跨版本递增由发版人保证)。
   `version.json` 的 `versionCode`/`versionName`/`apkUrl` 由 `scripts/sync_version.py`
   同步,不要手改这三项绕过校验;`changelog` 仍要手写,脚本不动它。
@@ -49,10 +52,10 @@
 
 | 检查 | 命令 |
 | --- | --- |
-| 编译 | `./gradlew assembleDebug`(JDK 17–23) |
+| 编译 | `./gradlew assembleDebug`(JDK 17–23,推荐 17 或 21) |
 | 版本一致性 | `python scripts/sync_version.py --check` |
 
-- CLI 构建前先设置 `JAVA_HOME`(JDK 17 或 21;Gradle 8.11.1 不支持 24+)。
+- CLI 构建前先设置 `JAVA_HOME`(Gradle 8.11.1 不支持 24+)。
   未设置时 `./gradlew` 会直接报 `JAVA_HOME is not set`,不是构建坏了。
   本机具体路径见工作区 `.workbuddy-ai/memory/`,不要写进本文件。
 - lint 目前只报告不拦截;仓库没有测试套件。不要为了"凑验证"新建测试
