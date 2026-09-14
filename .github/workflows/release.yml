@@ -11,15 +11,13 @@ name: Release
 # 注意：口令里若有 `=` 或 `\`，写进 keystore.properties 需要转义，建议先换成简单字符。
 #
 # 用法（先在 Settings → Secrets 配好签名信息）：
-#   手动触发：Actions → Release → Run workflow，填 tag
-# 等 Secrets 配好、验证过一次之后，再把下面的 push.tags 打开，改成"打 tag 即发版"。
-#
-#   push:
-#     tags:
-#       - 'v*'
+#   打 tag 即发版：git push origin v<版本号>（tag 指向 versionName 一致的提交）
+#   手动触发保留：Actions → Release → Run workflow 填 tag，用于失败重跑（会覆盖已有 asset）
 
 on:
-  # 暂时只保留手动触发：Secrets 还没配，打 tag 自动跑只会失败。
+  push:
+    tags:
+      - 'v*'
   workflow_dispatch:
     inputs:
       tag:
