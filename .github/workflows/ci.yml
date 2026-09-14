@@ -1,0 +1,47 @@
+name: CI
+
+# 只做质量门禁：版本号一致性 + 编译。不碰签名、不发版，所以 fork 的 PR 也能安全跑。
+#
+# 触发：push 到 master、任何 PR、以及手动。
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # 放在最前面：纯文本校验，秒级失败，不用等 JDK / SDK
+      - name: 校验版本号一致性
+        run: python3 scripts/sync_version.py --check
+
+      # README 已说明：Gradle 8.11.1 只支持到 Java 23，固定用 17
+      - name: 安装 JDK 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: 准备 Android SDK（compileSdk 36）
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platforms;android-36 build-tools;36.0.0'
+
+      - name: 缓存 Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: 构建 debug APK
+        run: ./gradlew assembleDebug --no-daemon
+
+      # 项目当前没有 lint baseline，先只报告不拦截；等清干净了再去掉 continue-on-error
+      - name: lint（暂不拦截）
+        continue-on-error: true
+        run: ./gradlew lintDebug --no-daemon
