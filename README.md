@@ -44,7 +44,23 @@ Kotlin + Jetpack Compose 编写，无广告、无账号、无联网上传（只�
 最新版本从 [GitHub Releases](https://github.com/os233/WaterReminder/releases) 获取：
 
 - 版本信息：<https://os233.github.io/WaterReminder/version.json>（GitHub Pages 仍托管这个 JSON）
-- 应用内「检查更新」读取上面的地址，再按其中的 `apkUrl` 到 Releases 下载 APK
+- 应用启动时自动读取上面的地址检查更新，发现新版本会弹窗提示，确认后按其中的 `apkUrl` 到 Releases 下载 APK
+
+## 使用说明
+
+**首次启动**
+
+- Android 13+ 会弹出通知权限申请，允许后提醒才能显示
+- Android 12+ 需在系统设置中授予「闹钟和提醒」权限，否则提醒不准时
+- 部分国产 ROM 需手动允许自启动与后台运行，否则提醒会被杀掉
+
+**日常使用**
+
+- **记录**：首页点饮品按钮记一杯，或通过「自定义」输入任意毫升数，按水合系数折算入当日总量
+- **目标**：点首页的目标数字修改每日目标（1000–4000 ml，步长 100）
+- **提醒**：首页进入「设置提醒」，选 1 / 2 / 3 小时间隔；可开启夜间免打扰并设起止时间（支持跨午夜）
+- **历史**：从首页进入历史页，查看最近 7 天汇总与月历，支持多选删除
+- **更新**：启动时自动检查，有新版本时在弹窗里点「立即更新」即可
 
 ## 环境要求
 
@@ -55,6 +71,25 @@ Kotlin + Jetpack Compose 编写，无广告、无账号、无联网上传（只�
 | Gradle | 8.11.1（wrapper 已内置，无需手动装） |
 | AGP / Kotlin | 8.10.1 / 2.0.21 |
 | Python | 3.9+（只有 `scripts/` 下的发版脚本用，不参与构建） |
+
+## 依赖安装
+
+推荐 Android Studio，依赖在首次打开项目时自动下载：
+
+1. 安装 [Android Studio](https://developer.android.com/studio)（自带 JDK 与 Android SDK）
+2. 拉取代码：
+
+   ```bash
+   git clone https://github.com/os233/WaterReminder.git
+   ```
+
+3. 用 Android Studio 打开项目根目录，等 Gradle Sync 跑完 —— AGP、Kotlin、Compose、Room 等依赖都托管在 `google()` 与 `mavenCentral()`，自动下载，无需手动安装
+
+纯命令行构建：
+
+- 安装 JDK 17 或 21，并设置 `JAVA_HOME` 指向它（Gradle 8.11.1 不支持 Java 24+）
+- Android SDK 用 Android Studio 安装，或通过 `ANDROID_HOME` / `local.properties` 指定 SDK 路径
+- Gradle 无需手动装，wrapper 首次运行会自动下载 8.11.1
 
 ## 构建
 
@@ -208,4 +243,4 @@ data class WaterRecord(
 
 ## 许可证
 
-仓库未包含 LICENSE 文件。
+本项目基于 [MIT License](LICENSE) 开源。
