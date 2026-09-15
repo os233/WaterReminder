@@ -124,10 +124,7 @@ jobs:
           REMOTE_SUM=$(curl -sSL -H "Authorization: Bearer $GH_TOKEN" \
             -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/tags/$TAG" \
-            | python3 -c 'import json,sys
-assets = json.load(sys.stdin).get("assets") or []
-apk = [a for a in assets if a["name"].lower().endswith(".apk")]
-print((apk[0].get("digest") or "").removeprefix("sha256:") if apk else "")')
+            | python3 -c 'import json,sys; assets = json.load(sys.stdin).get("assets") or []; apk = [a for a in assets if a["name"].lower().endswith(".apk")]; print((apk[0].get("digest") or "").removeprefix("sha256:") if apk else "")')
           echo "Release asset 的 SHA-256：$REMOTE_SUM"
           if [ -z "$REMOTE_SUM" ]; then
             echo "::error::取不到 Release asset 的摘要，GitHub 可能还没算完"
