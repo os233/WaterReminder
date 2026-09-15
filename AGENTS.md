@@ -66,9 +66,11 @@
 - 推 `v*.*.*` tag → `release.yml` 构建签名 APK → 创建 Release 并上传 asset →
   核对 asset 的 SHA-256。应用内更新(读 `/releases/latest`)与官网 `docs/`
   (前端现读 Releases API)都以它为准,没有需要单独维护的版本清单。
-- `docs/version.json` 的 `apkUrl` 指向 Release asset,所以发版后必须确认 Release 里
-  真有这个文件名,否则还在跑 1.5.0 之前的老客户端更新会 404。将来这个文件连同
-  `sync_version.py` 里的 `VERSION_JSON` 一起删。
+- `docs/version.json` 有**两个用途,都不能删**:①服务还在跑 1.5.0 之前的老客户端
+  (它们仍请求 Pages 上的老 URL);②**官网的静态兜底数据源** —— 未认证的 Releases API
+  只有 60 次/小时且配额按出口 IP 共享,共用网络下会被别人的请求用光,`site.js` 失败时
+  会退回来读它。所以它的 `changelog` 要认真写(API 失败时官网直接拿它当更新说明),
+  发版后也要确认它的 `apkUrl` 指向的 asset 真的存在,否则老客户端更新会 404。
 - 校验线上包用 Releases API 里 asset 的 `digest`(GitHub 官方算好的 SHA-256),
   **不要真去下那 11MB**;本机代理会截断响应体,下载比哈希更不可靠。
 - 本机没有 `gh` CLI。查 Release / asset 用

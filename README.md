@@ -49,7 +49,8 @@ Kotlin + Jetpack Compose 编写，无广告、无账号、无联网上传（只�
 最新版本从 [GitHub Releases](https://github.com/os233/WaterReminder/releases) 获取：
 
 - App 启动时直接读 GitHub Releases API 判断有没有新版本，不经过 GitHub Pages
-- 官网的下载链接与更新日志同样现读 Releases API，Release 一发布页面内容就跟着变
+- 官网的下载链接与更新日志同样现读 Releases API，Release 一发布页面内容就跟着变；
+  配额耗尽等失败情况会退到同域的 `docs/version.json`（见下）
 
 ## 使用说明
 
@@ -135,7 +136,7 @@ cp keystore.properties.example keystore.properties
 git tag v<版本号> && git push origin v<版本号>
 # 4. 等 CI 跑完，在 Release 页面把发布说明写成「新增 / 优化 / 修复」分段
 #    App 的更新弹窗与官网更新日志都直接读它
-# 5. 补 docs/version.json 的 changelog（过渡文件，见下），然后提交并推 master
+# 5. 补 docs/version.json 的 changelog（老客户端与官网兜底都要读它，见下），然后提交并推 master
 git add -A && git commit -m "release: 发布 <版本号>" && git push origin master
 ```
 
@@ -158,15 +159,27 @@ App 启动时请求 `https://api.github.com/repos/os233/WaterReminder/releases/l
 - 任何失败（断网、HTTP 错误、JSON 结构不符、没有 APK asset）都只是「没有更新」，不影响使用
 - Release 说明里写 `<!-- force-update -->` 会变成强制更新弹窗（没有「稍后」按钮）
 
-### docs/version.json 是过渡文件
+### docs/version.json 有两个用途，不能删
 
-1.5.0 起应用内更新改读 GitHub Releases API，`docs/version.json` 不再是更新源，它只服务
-**还在跑 1.5.0 之前版本**的已安装客户端 —— 那些版本仍会请求
+1.5.0 起应用内更新改读 GitHub Releases API，`docs/version.json` 不再是 App 的更新源，
+但它仍然承担两件事：
+
+**① 服务还没升级的老客户端。** 1.5.0 之前的已安装版本仍会请求
 `https://os233.github.io/WaterReminder/version.json`（Pages 源设为 `master` 的 `/docs` 目录，
 该 URL 正好映射到 `docs/version.json`）。
 
-等老版本客户端基本升级完，就可以连同 `scripts/sync_version.py` 里的 `VERSION_JSON` 一起删掉，
-彻底摆脱这个文件。
+**② 官网的静态兜底数据源。** 官网默认读 GitHub Releases API，但未认证的 API 只有
+**60 次/小时，而且配额按出口 IP 共享** —— 公司、校园网、运营商 NAT 这类共用出口很容易
+被别人的请求用光，访客就会看到「获取失败」。所以 API 失败时 `site.js` 会退回来读同域的
+`version.json`（同域、无配额、永远可达）。
+
+由此带来两条约定：
+
+- **`changelog` 要认真写**。它不只是给老客户端看的 —— API 失败时官网会直接拿它当更新说明显示。
+- 兜底数据里**没有 APK 大小和 SHA-256**（`version.json` 没这两项），走兜底时下载页会缺这两个值；
+  版本号和下载链接不受影响。
+
+⚠️ 因此**不要删这个文件**，也不要删 `scripts/sync_version.py` 里的 `VERSION_JSON`。
 
 ### 版本号一致性校验
 
@@ -197,7 +210,10 @@ Pages 源为 `master` 分支的 `/docs` 目录，站点就是 `docs/` 下的静�
 | `/privacy/` | 隐私政策 |
 
 `docs/assets/site.js` 在浏览器里请求 GitHub 的公开 API，所以版本信息与更新日志都不需要手工同步 ——
-Release 一发布，页面内容就跟着变。Pages 只做展示，App 的更新检查完全不经过它。
+Release 一发布，页面内容就跟着变。但未认证的 API 只有 60 次/小时，且配额**按出口 IP 共享**
+（公司、校园网、运营商 NAT 下很容易被别人的请求用光），所以首页与下载页在 API 失败时
+会**退回来读同域的 `version.json`**；更新日志页没有兜底源，失败时显示提示 + Releases 链接。
+Pages 只做展示，App 的更新检查完全不经过它。
 
 ### CI
 
@@ -222,7 +238,7 @@ release 工作流需要在仓库 Settings → Secrets and variables → Actions 
 │   ├── download/ changelog/     # 下载页、更新日志（前端现读 Releases API）
 │   ├── docs/ privacy/           # 使用文档、隐私政策
 │   ├── assets/                  # style.css + site.js
-│   └── version.json             # 过渡兼容文件，只服务 1.5.0 之前的老客户端
+│   └── version.json             # 老客户端过渡 + 官网兜底数据源（见「docs/version.json」）
 ├── app/release/                 # 本地 APK 留档（已 gitignore，不入库；分发走 GitHub Releases）
 └── app/src/main/java/com/example/waterreminder/
     ├── MainActivity.kt              # 入口：初始化数据库、启动保活服务、NavHost、启动时检查更新

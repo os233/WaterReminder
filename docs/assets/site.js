@@ -10,6 +10,19 @@
   var API = 'https://api.github.com/repos/' + OWNER + '/' + REPO;
   var RELEASES_PAGE = 'https://github.com/' + OWNER + '/' + REPO + '/releases';
 
+  /* version.json 与 assets/ 同级。用 site.js 自己的 URL 推路径，这样首页（/）和
+     子页面（/download/ 等）都能拿到正确的地址 —— 直接写 'version.json' 的话，
+     子页面会把它解析成 /download/version.json。 */
+  var VERSION_JSON = (function () {
+    var s = document.currentScript;
+    if (!s || !s.src) return null;
+    try {
+      return new URL('../version.json', s.src).href;
+    } catch (e) {
+      return null;
+    }
+  })();
+
   function escapeHtml(text) {
     return String(text)
       .replace(/&/g, '&amp;')
@@ -132,16 +145,47 @@
     });
   }
 
+  function showLatestFailure() {
+    setText('[data-latest-version]', '获取失败');
+    document.querySelectorAll('[data-download]').forEach(function (el) {
+      el.href = RELEASES_PAGE;
+    });
+    showFailure('[data-latest-notes]', '暂时取不到最新版本信息，可以直接去 GitHub Releases 查看。');
+  }
+
+  /*
+   * API 失败时的兜底：读同域的 version.json。
+   *
+   * 未认证的 GitHub API 只有 60 次/小时，而且是按**出口 IP 共享**的 —— 共用网络
+   * （公司、校园网、运营商 NAT）下很容易被别人用光，访客就会看到「获取失败」。
+   * 同域文件没有配额限制、永远可达，内容也够用（版本号、下载链接、更新说明）。
+   * 代价是缺 APK 大小与 SHA-256（version.json 里没有这两项），所以只填这几样。
+   */
+  function loadLatestFromStatic() {
+    if (!VERSION_JSON) return showLatestFailure();
+
+    fetch(VERSION_JSON)
+      .then(function (res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.json();
+      })
+      .then(function (v) {
+        if (!v || !v.versionName) throw new Error('version.json 结构不符');
+        setText('[data-latest-version]', 'v' + cleanVersion(v.versionName));
+        document.querySelectorAll('[data-download]').forEach(function (el) {
+          el.href = v.apkUrl || RELEASES_PAGE;
+        });
+        document.querySelectorAll('[data-latest-notes]').forEach(function (el) {
+          el.innerHTML = renderNotes(v.changelog) || '<p class="muted">这个版本没有写更新说明。</p>';
+        });
+      })
+      .catch(showLatestFailure);
+  }
+
   function loadLatest() {
     apiGet('/releases/latest')
       .then(fillLatest)
-      .catch(function () {
-        setText('[data-latest-version]', '获取失败');
-        document.querySelectorAll('[data-download]').forEach(function (el) {
-          el.href = RELEASES_PAGE;
-        });
-        showFailure('[data-latest-notes]', '暂时取不到最新版本信息，可以直接去 GitHub Releases 查看。');
-      });
+      .catch(loadLatestFromStatic);
   }
 
   function loadChangelog() {

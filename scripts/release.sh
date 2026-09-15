@@ -4,7 +4,9 @@
 #
 # 归档目录只作本地留档（已 gitignore）：APK 的分发走 GitHub Release asset，
 # 见 .github/workflows/release.yml。应用内更新读的是 GitHub Releases API，
-# 这里同步的 docs/version.json 只是给 1.5.0 之前的老版本客户端兜底（过渡用，将来会删）。
+# 这里同步的 docs/version.json 有两个用途（都不能删）：给 1.5.0 之前的老版本客户端兜底，
+# 以及作为官网在 Releases API 失败（配额耗尽等）时的静态兜底数据源 —— 所以它的 changelog
+# 也要认真写。
 #
 # 刻意不做的事：不自动 commit / push。发布是对外动作，留给人确认。
 #

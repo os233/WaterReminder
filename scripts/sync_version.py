@@ -4,14 +4,17 @@
 版本号写在三个地方，历史上出现过脱节（版本文件停在旧版本，导致应用内更新永远不触发）：
 
   1. app/build.gradle.kts              —— 唯一权威来源
-  2. docs/version.json                 —— 过渡兼容文件，见下
+  2. docs/version.json                 —— 老客户端过渡 + 官网兜底数据源，见下
   3. app/release/output-metadata.json  —— 归档产物的元数据
 
-关于 docs/version.json：1.5.0 起应用内更新改读 GitHub Releases API，这个文件不再是
-更新源，只是留给「还在跑 1.5.0 之前版本」的已安装客户端 —— 它们仍会请求
-https://os233.github.io/WaterReminder/version.json（Pages 源设为 master 的 /docs 目录，
-该 URL 正好映射到 docs/version.json）。等老版本客户端基本升级完，连同这个文件与脚本里的
-VERSION_JSON 一起删掉即可。
+关于 docs/version.json：它有两个用途，都不能删 ——
+
+  ① 服务「还在跑 1.5.0 之前版本」的已安装客户端：它们仍会请求
+     https://os233.github.io/WaterReminder/version.json（Pages 源设为 master 的 /docs 目录，
+     该 URL 正好映射到 docs/version.json）。
+  ② 官网（docs/assets/site.js）的静态兜底数据源：未认证的 Releases API 只有 60 次/小时，
+     且配额按出口 IP 共享，共用网络下容易被别人的请求用光，API 失败时官网会退回来读它。
+     所以它的 changelog 要认真写 —— API 失败时官网直接拿它当更新说明显示。
 
 用法：
 
