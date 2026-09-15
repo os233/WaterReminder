@@ -51,9 +51,41 @@
 - 换行符以 `.gitattributes` 为准:文本一律 LF 入库,`*.bat` 为 CRLF;
   尤其 `gradlew` 必须保持 LF(CRLF 会让 Linux CI 直接挂)。
 - `app/release/` 是本地 APK 留档(已 gitignore,不入库);分发走 GitHub Release
-  asset,除发版流程外不要动。
+  asset,除发版流程外不要动。该目录只有本地跑过发版脚本才存在,别假设磁盘上
+  有上一版 APK 可供比对 —— 校验线上包见「发布链路」。
 - `docs/` 是 GitHub Pages 的站点根,只放静态文件,不要引入构建步骤;
   页面里的版本信息、更新日志一律现读 GitHub Releases API,不要另存一份。
+
+## 发布链路
+
+版本信息的唯一来源是 **GitHub Release**,不是仓库里的任何文件。
+
+- 推 `v*.*.*` tag → `release.yml` 构建签名 APK → 创建 Release 并上传 asset →
+  核对 asset 的 SHA-256。应用内更新(读 `/releases/latest`)与官网 `docs/`
+  (前端现读 Releases API)都以它为准,没有需要单独维护的版本清单。
+- `docs/version.json` 的 `apkUrl` 指向 Release asset,所以发版后必须确认 Release 里
+  真有这个文件名,否则还在跑 1.5.0 之前的老客户端更新会 404。将来这个文件连同
+  `sync_version.py` 里的 `VERSION_JSON` 一起删。
+- 校验线上包用 Releases API 里 asset 的 `digest`(GitHub 官方算好的 SHA-256),
+  **不要真去下那 11MB**;本机代理会截断响应体,下载比哈希更不可靠。
+- 本机没有 `gh` CLI。查 Release / asset 用
+  `curl -sL https://api.github.com/repos/os233/WaterReminder/releases` + Python 解析。
+- Pages 源是 `master` 分支的 `/docs` 目录。**改 Pages 源是纯手工操作**:
+  Pages 设置没有可用 API,本机也没有任何 GitHub token —— 需要动源时只能让用户
+  去网页点,代理不要反复尝试。
+
+## GitHub Actions 的坑
+
+- **workflow「启动失败」不等于构建失败**:run 里没有任何 job、`name` 显示成
+  **文件路径**(而不是 `name:` 的值)、conclusion=failure —— 三者同时出现就是
+  GitHub 压根没解析成功这个 YAML,别去翻构建日志。
+- 一次 push 若修改了某个 workflow 文件,GitHub 会重新注册它,注册失败就产生一个
+  startup failure run —— 即使该 workflow 的 `on:` 不匹配这次 push。所以
+  「推 master 却冒出 release 的失败 run」多半是 YAML 非法,不是被误触发发版
+  (用 `git ls-remote --tags origin` 确认 tag 没变)。
+- 块标量(`run: |`)里写多行内联脚本极易踩缩进:块内每行必须缩进到同一列。
+  写多行 `python3 -c '...'` 时后续行回落到 0 列,会让块提前结束、后面几行被当成
+  顶层内容 → YAML 非法。**宁可写成单行**(`release.yml` 曾因此写坏并阻断发版)。
 
 ## 项目检查
 
@@ -67,6 +99,11 @@
 - CLI 构建前先设置 `JAVA_HOME`(Gradle 8.11.1 不支持 24+)。
   未设置时 `./gradlew` 会直接报 `JAVA_HOME is not set`,不是构建坏了。
   本机具体路径见工作区 `.workbuddy-ai/memory/`,不要写进本文件。
+- 改过 `.github/workflows/*.yml` 后、推送前,本地用 pyyaml 解析一遍再推
+  (`yaml.safe_load`;YAML 1.1 会把 `on:` 解析成布尔 `True`,属正常现象)。
+  装了 pyyaml 的解释器路径同样见工作区 `.workbuddy-ai/memory/`。
+- 应用内更新的检查结果只写 `shared_prefs/update_prefs.xml` 的 `last_check_at`,
+  且**仅在请求成功时写** —— 想确认那次 GitHub API 请求真的通了,看这个文件即可。
 - lint 目前只报告不拦截;仓库没有测试套件。不要为了"凑验证"新建测试
   脚手架,除非任务本身就是加测试。
 
