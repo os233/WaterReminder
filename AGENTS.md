@@ -44,10 +44,21 @@
 
 ### 密钥与隐私
 
-- **禁止提交** `keystore.properties`、`*.jks`、`local.properties`。
-- 敏感信息必须脱敏后再输出:`keystore.properties`、`*.jks`、`local.properties`
-  的内容只描述存在与用途,不得回显明文密码、口令、别名;汇报、日志、提交信息、
-  文档中出现的密钥、token、口令,用 `***` 或 `<redacted>` 替代。
+- **禁止提交** `keystore.properties`、`*.jks`、`local.properties`;
+  `keystore.properties.example` 只放占位值,不得把真实口令或本机路径填进去提交。
+- **禁止回显**以下任何值,只描述其存在与用途:`keystore.properties` 里的
+  `storeFile` / `storePassword` / `keyAlias` / `keyPassword`、密钥库文件内容、
+  CI Secrets(`KEYSTORE_BASE64`、`STORE_PASSWORD`、`KEY_ALIAS`、`KEY_PASSWORD`)。
+  `KEYSTORE_BASE64` 是密钥库的等价物 —— base64 不是加密,同样按密钥对待。
+- 脱敏适用于**一切输出渠道**:汇报、对话、日志、提交信息、文档、issue / PR 评论、
+  截图。密钥、token、口令一律用 `***` 或 `<redacted>` 替代。
+- 本机绝对路径与设备标识(用户目录、SDK / JDK 路径、`adb` 设备串号)同样按敏感信息
+  对待:只写进工作区 `.workbuddy-ai/memory/`,不得写进入库文件或对外输出。
+- 用户数据(饮水记录、`water_database`、`shared_prefs`)属于隐私:要展示其内容时
+  先脱敏,或改用构造的样例数据。
+- **发现泄漏必须立即处理**:停止继续扩散并告知用户,由用户决定是否轮换口令或重建
+  密钥库;代理不得自行更换密钥库、不得删改历史提交 —— 换库意味着老用户只能卸载
+  重装(见 README「发布流程」),是不可逆的对外影响。
 
 ### 版本与发版
 
