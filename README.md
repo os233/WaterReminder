@@ -125,66 +125,109 @@ cp keystore.properties.example keystore.properties
 
 ## 发布流程
 
-`app/build.gradle.kts` 里的 `versionCode` / `versionName` 是版本号的唯一来源；版本信息
-（版本号、更新说明、APK 下载地址与 SHA-256）的唯一来源是 GitHub Release —— 它由 tag 触发
-CI 自动创建，应用内更新和官网都直接读它，没有需要单独维护的版本清单
-（`docs/version.json` 只作过渡与兜底，见下）。
+版本号写在 `app/build.gradle.kts`；**发布 Manifest 是 `docs/version.json`** —— App 内更新
+与官网都读它，机器字段由 CI 在发版时写回，人工只写 `changelog`。GitHub Release 负责托管
+APK asset 与给人看的 Release Notes。
+
+```text
+      app/build.gradle.kts   (versionCode / versionName，唯一权威来源)
+                │
+            git tag v1.5.0
+                │
+                ▼
+        GitHub Actions (release.yml)
+                │
+      ┌─────────┼──────────┐
+      ▼         ▼          ▼
+   构建签名 APK  算 SHA-256  创建 Release
+      └─────────┼──────────┘
+                │  ① 先上传 asset
+                ▼
+    写回 docs/version.json 并推 master
+    (versionCode / versionName / apkUrl / sha256)
+                │  ② 后更新 Manifest
+                ▼
+        GitHub Pages (静态托管，无配额)
+                │
+        ┌───────┴────────┐
+        ▼                ▼
+   Android App         官网
+        │                │
+   读 version.json   读 Releases API
+   比 versionCode   (失败退到 version.json)
+        │
+        ▼
+  下载 Release 里的 APK → 校验 SHA-256 → 交给安装器
+```
 
 ```bash
 # 1. 改 app/build.gradle.kts 里的 versionCode 与 versionName（versionCode 必须严格递增）
-# 2. 本地一键构建 → 归档 → 同步版本文件与元数据
+# 2. 手写 docs/version.json 的 changelog —— 这是它唯一人工维护的字段
+# 3. 本地构建 + 归档 + 校验（不会改 version.json 的机器字段，原因见下）
 ./scripts/release.sh
-# 3. 补 docs/version.json 的 changelog（脚本不动它；老客户端与官网兜底都要读它，见下）
-# 4. 提交：版本号与版本文件必须在同一个提交里，tag 才能指向它
-git add app/build.gradle.kts docs/version.json && git commit -m "release: 发布 <版本号>"
-# 5. 打 tag 并推送 → CI 自动构建签名 APK、创建 Release 并上传 asset
-#    （tag 必须打在 versionName 一致的提交上，工作流第一步会校验）
+# 4. 提交并推 master。此时 version.json 的版本号还是旧的，App 不会提示更新，也不会 404
+git add -A && git commit -m "release: 发布 <版本号>" && git push origin master
+# 5. 打 tag 并推送 → CI 构建 APK、创建 Release、上传 asset，然后把 version.json 的
+#    versionCode / versionName / apkUrl / sha256 写回并推 master
 git tag v<版本号> && git push origin v<版本号>
-# 6. 等 CI 跑完，在 Release 页面把发布说明写成「新增 / 优化 / 修复」分段
-#    App 的更新弹窗与官网更新日志都直接读它
-# 7. 确认 Release 里已有对应的 APK asset（version.json 的兜底 apkUrl 指向它，缺了老客户端就是 404），
-#    再推 master 上线官网
-git push origin master
 ```
 
+⚠️ **顺序不能反**：先推 `master`，再推 tag。CI 的写回步骤基于 tag 指向的提交，
+要求远端 `master` 已经是它的祖先，否则推送会被拒。
+
+**为什么机器字段不能本地写**：Manifest 一旦指向新版本，App 就会让用户去下载那个地址。
+如果这时 asset 还没上传，用户点更新直接 404。让 CI 在 asset 就位**之后**写回，
+这个窗口就不存在了 —— 代价只是「推完 tag 等 CI 跑完，App 才开始提示更新」。
+
 `scripts/release.sh` 依次做：校验 `keystore.properties` 存在 → `./gradlew assembleRelease` →
-产物归档到 `app/release/`（本地留档，不入库）→ 同步 `docs/version.json` 与
-`app/release/output-metadata.json` → 版本号一致性校验 → apksigner 签名自检（找不到工具就跳过并提示）。
-**它不会自动 commit / push** —— 发布是对外动作，留给人确认。
+产物归档到 `app/release/`（本地留档，不入库）→ 版本号一致性校验 → apksigner 签名自检
+（找不到工具就跳过并提示）。**它不会自动 commit / push** —— 发布是对外动作，留给人确认。
 
 **务必始终使用同一个密钥库**。签名不一致会导致老用户无法覆盖安装，只能卸载重装。
 
 ### 应用内更新怎么工作
 
-App 启动时请求 `https://api.github.com/repos/os233/WaterReminder/releases/latest`，取 `tag_name`
-当版本号、`body` 当更新说明、assets 里第一个 `.apk` 当下载地址、该 asset 的 `digest` 当 SHA-256：
+App 读 `https://os233.github.io/WaterReminder/version.json` —— Pages 上的静态发布 Manifest：
 
-- 版本比较按数字段逐段比（`1.10.0` > `1.9.0`），不用字符串比较。GitHub 的 Release 里没有
-  Android 的 `versionCode` 字段，所以用 `versionName` 的数字段排序，发布时保证两者同序即可
-- 下载完成后先算安装包的 SHA-256 与 `digest` 比对，不一致就删掉重来，不交给安装器
-- 自动检查最多每 12 小时一次（未认证的 GitHub API 配额只有 60 次/小时）
-- 任何失败（断网、HTTP 错误、JSON 结构不符、没有 APK asset）都只是「没有更新」，不影响使用
-- Release 说明里写 `<!-- force-update -->` 会变成强制更新弹窗（没有「稍后」按钮）
+- **版本比较用 `versionCode`**，与装机版本的 `PackageInfo.versionCode` 直接比大小。
+  符合 Android 的版本模型，也不依赖 `versionName` 的数字段恰好有序
+- 下载完成后算安装包的 SHA-256 与 `sha256` 字段比对，不一致就删掉重来，不交给安装器
+- 自动检查最多每 12 小时一次；手动检查忽略节流，并明确区分「已是最新」和「没查到」
+- 任何失败（断网、HTTP 错误、字段缺失或非法）都只当作「没有更新」，不影响使用
+- `forceUpdate` 为 `true` 时弹窗没有「稍后」按钮
 
-### docs/version.json 有两个用途，不能删
+**为什么不读 GitHub Releases API**：未认证的 API 只有 60 次/小时，而且配额**按出口 IP
+共享** —— 公司、校园网、运营商 NAT 这类共用出口很容易被别人的请求用光，拿到 403 之后
+更新检查就静默失败了。静态文件在 CDN 上没有配额，App 也不必去猜 API 的响应结构。
+另外 API 的 `body` 是 Release Notes，本仓库实际是 `--generate-notes` 生成的
+「Full Changelog: <链接>」，对用户没有意义。
 
-1.5.0 起应用内更新改读 GitHub Releases API，`docs/version.json` 不再是 App 的更新源，
-但它仍然承担两件事：
+⚠️ **字段结构是兼容契约**：已发布的 1.4.0 也用 Gson 按顶层字段反序列化这个文件。
+缺字段会被静默当成 0/null（表现为「永远没有更新」）。所以只能**新增**字段 ——
+不能改名、删字段，也不能把它们挪进嵌套对象。
 
-**① 服务还没升级的老客户端。** 1.5.0 之前的已安装版本仍会请求
-`https://os233.github.io/WaterReminder/version.json`（Pages 源设为 `master` 的 `/docs` 目录，
-该 URL 正好映射到 `docs/version.json`）。
+### docs/version.json 是发布 Manifest，不能删
+
+它有两个消费者：
+
+**① 应用内更新。** 所有版本都读它 —— 包括 1.4.0 及更早的老客户端（它们的请求 URL 就是它）。
+有没有新版本、去哪里下载、下载后拿什么摘要校验，全部来自这个文件。
 
 **② 官网的静态兜底数据源。** 官网默认读 GitHub Releases API，但未认证的 API 只有
-**60 次/小时，而且配额按出口 IP 共享** —— 公司、校园网、运营商 NAT 这类共用出口很容易
-被别人的请求用光，访客就会看到「获取失败」。所以 API 失败时 `site.js` 会退回来读同域的
-`version.json`（同域、无配额、永远可达）。
+**60 次/小时，而且配额按出口 IP 共享** —— 共用出口很容易被别人的请求用光，访客就会看到
+「获取失败」。所以 API 失败时 `site.js` 会退回来读同域的 `version.json`
+（同域、无配额、永远可达）。因此 **`changelog` 要认真写** —— API 失败时官网直接拿它当更新说明显示。
 
-由此带来两条约定：
+字段与维护者：
 
-- **`changelog` 要认真写**。它不只是给老客户端看的 —— API 失败时官网会直接拿它当更新说明显示。
-- 兜底数据里**没有 APK 大小和 SHA-256**（`version.json` 没这两项），走兜底时下载页会缺这两个值；
-  版本号和下载链接不受影响。
+| 字段 | 谁写 | 说明 |
+| --- | --- | --- |
+| `versionCode` | CI | 机器比较依据，必须与 `build.gradle.kts` 一致 |
+| `versionName` | CI | 给人看的版本号 |
+| `apkUrl` | CI | 指向 Release asset，必须是 https |
+| `sha256` | CI | 该 asset 的摘要；为空时 App 跳过下载后校验 |
+| `changelog` | **人工** | App 更新弹窗与官网兜底都读它 |
+| `forceUpdate` | 人工 | 为 `true` 时弹窗没有「稍后」按钮 |
 
 ⚠️ 因此**不要删这个文件**，也不要删 `scripts/sync_version.py` 里的 `VERSION_JSON`。
 
@@ -199,8 +242,9 @@ python scripts/sync_version.py --expect-tag v1.4.0    # 断言 tag 与 versionNa
 
 - `docs/version.json` 的 versionCode **不能比源码还新**（多半是升了它却忘了升 `app/build.gradle.kts`）
 - `apkUrl` 的文件名必须与 versionName 匹配
-- `apkUrl` 指向 Releases 时脚本只给提示，**无法校验 asset 是否已上传** —— 发版后要自己确认
-  Release 里有这个文件，否则老版本客户端的更新会 404
+- `sha256` 缺失不算失败：本地发版时它是空的，CI 在 Release 建好后写回真实值
+- `apkUrl` 指向 Releases 时脚本只给提示，**无法校验 asset 是否已上传** —— 不过发版流程里
+  这一步由 CI 保证（先上传 asset，再改 Manifest），不需要人工确认
 
 允许 `docs/version.json` 落后于源码 —— 开发中先升源码版本号是正常的。
 
@@ -220,18 +264,18 @@ Pages 源为 `master` 分支的 `/docs` 目录，站点就是 `docs/` 下的静�
 Release 一发布，页面内容就跟着变。但未认证的 API 只有 60 次/小时，且配额**按出口 IP 共享**
 （公司、校园网、运营商 NAT 下很容易被别人的请求用光），所以首页与下载页在 API 失败时
 会**退回来读同域的 `version.json`**；更新日志页没有兜底源，失败时显示提示 + Releases 链接。
-Pages 只做展示，App 的更新检查完全不经过它。
+Pages 不只是展示 —— **App 的更新检查也读它**（`/version.json`），见「应用内更新怎么工作」。
 
 ### CI
 
 | 工作流 | 触发 | 做什么 |
 | --- | --- | --- |
 | `.github/workflows/ci.yml` | push 到 master / 任何 PR / 手动 | 版本号校验 + `assembleDebug`（lint 目前只报告不拦截）。不需要任何密钥，fork 的 PR 也能安全跑 |
-| `.github/workflows/release.yml` | push 形如 `v1.4.0` 的 tag 自动发版；手动触发保留，用于失败重跑（会覆盖已有 asset） | 校验 tag 与 versionName 一致 → 构建签名 APK → 校验签名 → 创建 Release 并上传 asset → 核对 asset 的 SHA-256 与本地产物一致 |
+| `.github/workflows/release.yml` | push 形如 `v1.4.0` 的 tag 自动发版；手动触发保留，用于失败重跑（会覆盖已有 asset） | 校验 tag 与 versionName 一致 → 构建签名 APK → 校验签名 → 创建 Release 并上传 asset → 核对 asset 的 SHA-256 与本地产物一致 → 把机器字段写回 `docs/version.json` 并推 master |
 
-tag 过滤器是 `v[0-9]*.[0-9]*.[0-9]*`。glob 的 `*` 会吃掉后缀，所以预发布 tag
-（如 `v1.3.0-beta.1`）**也会触发** —— 它会在「校验 tag 与 versionName 一致」那步失败退出，
-不会真的发版。要彻底排除预发布得再加一条 `!v*-*`，本仓库未实测。
+tag 过滤器是 `v[0-9]*.[0-9]*.[0-9]*` 加一条排除 `!v*-*`。注意 glob 的 `*` 会吃掉后缀 ——
+只写前一条的话预发布 tag（如 `v1.3.0-beta.1`）也会匹配进来，所以用 `!v*-*` 明确挡掉。
+本仓库没有 beta 发布流程：预发布 tag 什么都不做，而不是「跑起来再失败」。
 
 release 工作流需要在仓库 Settings → Secrets and variables → Actions 配好
 `KEYSTORE_BASE64`（`base64 -w0 water_keystore.jks`）、`STORE_PASSWORD`、`KEY_ALIAS`、`KEY_PASSWORD`；
@@ -245,14 +289,14 @@ release 工作流需要在仓库 Settings → Secrets and variables → Actions 
 ├── build.gradle.kts             # AGP / Kotlin / KSP 插件版本；app/build.gradle.kts 里是版本号与依赖
 ├── gradle/ · gradlew            # Gradle wrapper（8.11.1，只走 wrapper）
 ├── scripts/
-│   ├── release.sh               # 一键发版：构建 → 归档 → 同步版本号
-│   └── sync_version.py          # 同步 / 校验版本文件与源码版本号
+│   ├── release.sh               # 一键发版：构建 → 归档 → 校验版本文件
+│   └── sync_version.py          # 同步 / 校验版本文件与源码版本号（CI 用它写回 Manifest）
 ├── docs/                        # GitHub Pages 官网（Pages 源就是这个目录）
 │   ├── index.html               # 首页
 │   ├── download/ changelog/     # 下载页、更新日志（前端现读 Releases API）
 │   ├── docs/ privacy/           # 使用文档、隐私政策
 │   ├── assets/                  # style.css + site.js
-│   └── version.json             # 老客户端过渡 + 官网兜底数据源（见「docs/version.json」）
+│   └── version.json             # 发布 Manifest：App 内更新与官网都读它（机器字段由 CI 写）
 ├── app/release/                 # 本地 APK 留档（已 gitignore，不入库；分发走 GitHub Releases）
 └── app/src/main/java/com/example/waterreminder/
     ├── MainActivity.kt              # 入口：初始化数据库、启动保活服务、NavHost、启动时检查更新
@@ -264,8 +308,8 @@ release 工作流需要在仓库 Settings → Secrets and variables → Actions 
     │   ├── DrinkType.kt             # 饮品类型与水合系数
     │   ├── UserPrefs.kt             # SharedPreferences（每日目标）
     │   └── remote/
-    │       ├── UpdateChecker.kt     # 读 GitHub Releases API 检查更新、下载安装
-    │       └── UpdateInfo.kt        # 一次可用更新的数据 + 版本号比较
+    │       ├── UpdateChecker.kt     # 读 Pages 的 version.json 检查更新、下载安装
+    │       └── UpdateInfo.kt        # 一次可用更新的数据（对应 version.json 的顶层字段）
     ├── notification/
     │   ├── AlarmManagerHelper.kt    # 闹钟调度、免打扰判断
     │   ├── AlarmReceiver.kt         # 提醒触发
@@ -315,7 +359,7 @@ data class WaterRecord(
 - APK 不再入库，改由 GitHub Release asset 分发（`.github/workflows/release.yml`）；
   `app/release/` 只作本地留档并已加入 `.gitignore`。迁移前 Pages 上的旧直链（`app/release/*.apk`）会随之失效
 - 仓库 Settings → Pages 的源必须是 `master` 分支的 `/docs` 目录 —— 官网在 `docs/`，
-  过渡用的 `docs/version.json` 也靠这个映射才在老 URL 上可达
+  `docs/version.json` 也靠这个映射，才在 App 与官网读的那个 URL 上可达
 
 ## 许可证
 

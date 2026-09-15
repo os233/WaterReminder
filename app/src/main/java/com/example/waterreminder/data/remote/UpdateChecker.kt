@@ -29,31 +29,41 @@ sealed interface UpdateCheckResult {
     /** 已是最新；被节流跳过时也返回这个（自动检查对两者都是「不提示」） */
     data object UpToDate : UpdateCheckResult
 
-    /** 没查到：断网、HTTP 非 2xx、JSON 结构不符、没有可用的 APK asset */
+    /** 没查到：断网、HTTP 非 2xx、JSON 结构不符、字段非法 */
     data object Failed : UpdateCheckResult
 }
 
 /**
  * 更新检查与安装。
  *
- * 版本信息的唯一来源是 GitHub Releases（`/releases/latest`），不再依赖 GitHub Pages 上的
- * version.json —— Pages 挂了也不该影响 App 检查更新。
+ * 版本信息读的是 GitHub Pages 上的 `version.json` —— 一个由 CI 在发版时自动生成的静态
+ * 发布 Manifest，**不是** GitHub Releases API。
+ *
+ * 为什么不用 API：
+ *  - 未认证的 API 只有 60 次/小时，且配额**按出口 IP 共享**，公司 / 校园网 / 运营商 NAT
+ *    下很容易被别人的请求用光，拿到 403 之后更新检查就静默失败了；
+ *  - API 的 `body` 是 Release Notes，本仓库实际是 `--generate-notes` 生成的
+ *    "Full Changelog: <链接>"，对用户没有意义；`version.json` 里的 changelog 才是手写的中文；
+ *  - 静态文件在 CDN 上，没有配额，App 也不必猜 API 的响应结构。
+ *
+ * 解析对每个字段都显式校验，缺失或非法一律返回 [UpdateCheckResult.Failed] —— 不用 Gson
+ * 直接反序列化，因为那样缺字段会被静默填成 0/null，表现为「永远没有更新」。
  */
 class UpdateChecker(private val context: Context) {
     private val client = OkHttpClient()
 
     companion object {
-        private const val API_LATEST_RELEASE =
-            "https://api.github.com/repos/os233/WaterReminder/releases/latest"
-
-        /** Release Notes 里带这个标记即视为强制更新 */
-        private const val FORCE_UPDATE_MARKER = "<!-- force-update -->"
+        private const val VERSION_JSON_URL =
+            "https://os233.github.io/WaterReminder/version.json"
 
         private const val PREFS = "update_prefs"
         private const val KEY_LAST_CHECK = "last_check_at"
 
-        /** 自动检查的最小间隔：未认证的 GitHub API 配额只有 60 次/小时，别每次启动都打 */
+        /** 自动检查的最小间隔。静态文件没有配额限制，但也没必要每次启动都打 */
         private const val CHECK_INTERVAL_MS = 12 * 60 * 60 * 1000L
+
+        /** SHA-256 十六进制摘要的长度 */
+        private const val SHA256_HEX_LENGTH = 64
     }
 
     /**
@@ -73,8 +83,7 @@ class UpdateChecker(private val context: Context) {
             }
 
             val request = Request.Builder()
-                .url(API_LATEST_RELEASE)
-                .header("Accept", "application/vnd.github+json")
+                .url(VERSION_JSON_URL)
                 .header("User-Agent", "WaterReminder")
                 .build()
 
@@ -85,51 +94,53 @@ class UpdateChecker(private val context: Context) {
                 response.body?.string() ?: return@withContext UpdateCheckResult.Failed
             }
 
-            parseLatestRelease(body)
+            parseVersionJson(body)
         } catch (e: Exception) {
             e.printStackTrace()
             UpdateCheckResult.Failed
         }
     }
 
-    /** 解析 `/releases/latest` 的响应。 */
-    private fun parseLatestRelease(json: String): UpdateCheckResult {
+    /** 解析 `version.json`。字段缺失或非法一律判为失败，宁可说「没查到」也不猜。 */
+    private fun parseVersionJson(json: String): UpdateCheckResult {
         val root = JsonParser.parseString(json).asJsonObject
 
-        val tag = root.stringOrNull("tag_name")?.takeIf { it.isNotBlank() }
-            ?: return UpdateCheckResult.Failed
-        val remoteVersion = tag.removePrefix("v")
-        if (compareVersionNames(remoteVersion, currentVersionName()) <= 0) {
-            return UpdateCheckResult.UpToDate
-        }
+        val versionCode = root.intOrNull("versionCode") ?: return UpdateCheckResult.Failed
+        if (versionCode <= 0) return UpdateCheckResult.Failed
 
-        val asset = root.getAsJsonArray("assets")
-            ?.mapNotNull { if (it.isJsonObject) it.asJsonObject else null }
-            ?.firstOrNull { it.stringOrNull("name")?.endsWith(".apk", ignoreCase = true) == true }
+        val versionName = root.stringOrNull("versionName")?.takeIf { it.isNotBlank() }
             ?: return UpdateCheckResult.Failed
 
-        val apkUrl = asset.stringOrNull("browser_download_url") ?: return UpdateCheckResult.Failed
+        val apkUrl = root.stringOrNull("apkUrl") ?: return UpdateCheckResult.Failed
         // 更新包只允许走 HTTPS，拒绝任何明文下载
         if (!apkUrl.startsWith("https://")) return UpdateCheckResult.Failed
 
-        val body = root.stringOrNull("body").orEmpty()
+        if (versionCode <= currentVersionCode()) return UpdateCheckResult.UpToDate
+
         return UpdateCheckResult.Available(
             UpdateInfo(
-                versionName = remoteVersion,
+                versionCode = versionCode,
+                versionName = versionName,
                 apkUrl = apkUrl,
-                changelog = body.replace(FORCE_UPDATE_MARKER, "").trim(),
-                // 只认 sha256 摘要；GitHub 换成别的算法时不拿它当校验值用
-                sha256 = asset.stringOrNull("digest")
-                    ?.takeIf { it.startsWith("sha256:") }
-                    ?.removePrefix("sha256:")
-                    ?.takeIf { it.isNotBlank() },
-                forceUpdate = body.contains(FORCE_UPDATE_MARKER)
+                changelog = root.stringOrNull("changelog").orEmpty(),
+                // 格式不对就当没有摘要，下载后不校验 —— 但绝不会拿一个错的值去校验
+                sha256 = root.stringOrNull("sha256")
+                    ?.takeIf { it.length == SHA256_HEX_LENGTH && it.all(Char::isHexDigit) },
+                forceUpdate = root.booleanOrNull("forceUpdate") ?: false
             )
         )
     }
 
-    private fun currentVersionName(): String =
-        context.packageManager.getPackageInfo(context.packageName, 0).versionName.orEmpty()
+    /** 装机版本号；API 28+ 用 longVersionCode，更低版本回退到已废弃的 versionCode。 */
+    private fun currentVersionCode(): Long {
+        val info = context.packageManager.getPackageInfo(context.packageName, 0)
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            info.longVersionCode
+        } else {
+            @Suppress("DEPRECATION")
+            info.versionCode.toLong()
+        }
+    }
 
     fun checkInstallPermission(): Boolean {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -242,3 +253,23 @@ private fun JsonObject.stringOrNull(key: String): String? {
     val element = get(key) ?: return null
     return if (element.isJsonPrimitive) element.asString else null
 }
+
+/** 取 JSON 字段的整数值；字段缺失、是 null 或不是数字时返回 null（而不是当成 0）。 */
+private fun JsonObject.intOrNull(key: String): Int? {
+    val element = get(key) ?: return null
+    if (!element.isJsonPrimitive) return null
+    val primitive = element.asJsonPrimitive
+    return if (primitive.isNumber) primitive.asInt else null
+}
+
+/** 取 JSON 字段的布尔值；字段缺失、是 null 或不是布尔时返回 null。 */
+private fun JsonObject.booleanOrNull(key: String): Boolean? {
+    val element = get(key) ?: return null
+    if (!element.isJsonPrimitive) return null
+    val primitive = element.asJsonPrimitive
+    return if (primitive.isBoolean) primitive.asBoolean else null
+}
+
+/** `Char.isDigit()` 只认 0-9 和 Unicode 数字，摘要得限定 ASCII 十六进制字符。 */
+private fun Char.isHexDigit(): Boolean =
+    this in '0'..'9' || this in 'a'..'f' || this in 'A'..'F'

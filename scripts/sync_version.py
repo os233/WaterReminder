@@ -7,20 +7,30 @@
   2. docs/version.json                 —— 老客户端过渡 + 官网兜底数据源，见下
   3. app/release/output-metadata.json  —— 归档产物的元数据
 
-关于 docs/version.json：它有两个用途，都不能删 ——
+关于 docs/version.json：它是**发布 Manifest** —— 机器字段由 CI 在发版时写回，
+有两个消费者：
 
-  ① 服务「还在跑 1.5.0 之前版本」的已安装客户端：它们仍会请求
-     https://os233.github.io/WaterReminder/version.json（Pages 源设为 master 的 /docs 目录，
-     该 URL 正好映射到 docs/version.json）。
-  ② 官网（docs/assets/site.js）的静态兜底数据源：未认证的 Releases API 只有 60 次/小时，
-     且配额按出口 IP 共享，共用网络下容易被别人的请求用光，API 失败时官网会退回来读它。
-     所以它的 changelog 要认真写 —— API 失败时官网直接拿它当更新说明显示。
+  ① 应用内更新：App 读 https://os233.github.io/WaterReminder/version.json 判断有没有新版本
+     （比 versionCode），并取 apkUrl 与 sha256。这是所有版本的唯一更新源，不走 GitHub
+     Releases API —— 未认证 API 只有 60 次/小时且配额按出口 IP 共享，被别人的请求用光后
+     更新检查会静默失败。
+  ② 官网（docs/assets/site.js）的静态兜底数据源：Releases API 失败时官网退回来读它。
+     所以 changelog 要认真写 —— API 失败时官网直接拿它当更新说明显示。
+
+⚠️ 字段结构是**兼容契约**：已发布的旧客户端按顶层字段反序列化这个文件，
+   缺字段会被静默当成 0/null（表现为「永远没有更新」）。只能新增，
+   不能改名、删字段，也不能把它们挪进嵌套对象。
 
 用法：
 
-    python scripts/sync_version.py            # 按源码版本同步 2 和 3
-    python scripts/sync_version.py --check    # 只校验，不写文件（CI 用）
-    python scripts/sync_version.py --expect-tag v1.3.0   # 断言 tag 与 versionName 一致
+    python scripts/sync_version.py                       # 按源码版本同步 2 和 3
+    python scripts/sync_version.py --check               # 只校验，不写文件（CI 用）
+    python scripts/sync_version.py --expect-tag v1.5.0   # 断言 tag 与 versionName 一致
+    python scripts/sync_version.py --sha256 <hex>        # 同步并写入 APK 摘要（CI 发版用）
+
+本地发版**不要**跑无参数的同步 —— 那会把 version.json 的 apkUrl 指到一个还没上传的
+asset 上，老客户端点更新会 404。机器字段由 CI 在 Release 建好之后写回（见 release.yml），
+本地只要手写好 changelog，再用 --check 确认没写坏。
 
 只依赖标准库。
 """
@@ -85,7 +95,7 @@ def dump_json(path: Path, data: dict) -> None:
     )
 
 
-def cmd_sync() -> int:
+def cmd_sync(sha256: str | None = None) -> int:
     code, name = read_source_version()
     vj = rel(VERSION_JSON)
     info = load_json(VERSION_JSON)
@@ -108,6 +118,17 @@ def cmd_sync() -> int:
     if new_url != url:
         changed.append(f"{vj}: apkUrl → {new_url}")
         info["apkUrl"] = new_url
+        # apkUrl 换了版本段，旧摘要对新包必然对不上。留着会让 App 下载后校验失败、
+        # 删掉安装包（用户装不上），所以必须清空；真实值由 CI 在发版时写回。
+        if info.get("sha256") is not None:
+            info["sha256"] = None
+            changed.append(f"{vj}: sha256 已清空（apkUrl 指向新版本，等 CI 发版时写回）")
+
+    # 显式传入的摘要写在 apkUrl 处理之后：否则「apkUrl 变了 → 清空旧摘要」
+    # 会把刚传进来的新值一起清掉。
+    if sha256 is not None and info.get("sha256") != sha256:
+        changed.append(f"{vj}: sha256 → {sha256}")
+        info["sha256"] = sha256
 
     if changed:
         dump_json(VERSION_JSON, info)
@@ -180,6 +201,13 @@ def cmd_check() -> int:
                 "（Pages 上会 404，老版本客户端的更新会失败）"
             )
 
+    # sha256 缺失不算失败：本地发版会先清空它，CI 在 Release 建好后写回真实值。
+    sha256 = info.get("sha256")
+    if sha256 is None:
+        print(f"[提示] {vj} 的 sha256 为空 —— App 下载后不做摘要校验（CI 发版时会写回）。")
+    elif not isinstance(sha256, str) or not re.fullmatch(r"[0-9a-f]{64}", sha256):
+        problems.append(f"{vj} 的 sha256 非法：{sha256!r}（期望 64 位小写十六进制）")
+
     if METADATA_JSON.exists():
         elements = load_json(METADATA_JSON).get("elements") or []
         if elements:
@@ -220,11 +248,19 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="同步 / 校验版本文件与源码版本号")
     parser.add_argument("--check", action="store_true", help="只校验不写文件")
     parser.add_argument("--expect-tag", metavar="TAG", help="断言 tag 与 versionName 一致")
+    parser.add_argument(
+        "--sha256",
+        metavar="HEX",
+        help="一并写入 version.json 的 APK 摘要（64 位小写十六进制；CI 在 Release 建好后用）",
+    )
     args = parser.parse_args()
+
+    if args.sha256 is not None and not re.fullmatch(r"[0-9a-f]{64}", args.sha256):
+        sys.exit(f"[错误] --sha256 必须是 64 位小写十六进制：{args.sha256!r}")
 
     if args.expect_tag:
         return cmd_expect_tag(args.expect_tag)
-    return cmd_check() if args.check else cmd_sync()
+    return cmd_check() if args.check else cmd_sync(args.sha256)
 
 
 if __name__ == "__main__":

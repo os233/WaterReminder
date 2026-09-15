@@ -158,8 +158,8 @@
    *
    * 未认证的 GitHub API 只有 60 次/小时，而且是按**出口 IP 共享**的 —— 共用网络
    * （公司、校园网、运营商 NAT）下很容易被别人用光，访客就会看到「获取失败」。
-   * 同域文件没有配额限制、永远可达，内容也够用（版本号、下载链接、更新说明）。
-   * 代价是缺 APK 大小与 SHA-256（version.json 里没有这两项），所以只填这几样。
+   * 同域文件没有配额限制、永远可达，内容也够用（版本号、下载链接、摘要、更新说明）。
+   * 代价是缺 APK 大小与下载次数（version.json 里没有这两项）。
    */
   function loadLatestFromStatic() {
     if (!VERSION_JSON) return showLatestFailure();
@@ -175,6 +175,7 @@
         document.querySelectorAll('[data-download]').forEach(function (el) {
           el.href = v.apkUrl || RELEASES_PAGE;
         });
+        if (v.sha256) setText('[data-latest-sha256]', 'SHA-256 ' + v.sha256);
         document.querySelectorAll('[data-latest-notes]').forEach(function (el) {
           el.innerHTML = renderNotes(v.changelog) || '<p class="muted">这个版本没有写更新说明。</p>';
         });

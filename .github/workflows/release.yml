@@ -1,9 +1,17 @@
 name: Release
 
-# 打 tag 即发版：构建签名 release APK，创建 GitHub Release 并把 APK 作为 asset 上传。
+# 打 tag 即发版：构建签名 release APK，创建 GitHub Release 并把 APK 作为 asset 上传，
+# 最后把版本信息写回 docs/version.json 并推 master。
 #
-# Release 是版本信息的唯一来源：应用内更新读 /releases/latest，官网的下载页与更新日志
-# 也直接读它。APK 只以 Release asset 分发，不进仓库、也不放 GitHub Pages。
+# 分发链路（谁是权威、谁读谁）：
+#   GitHub Release     发布平台 —— APK asset、tag、Release Notes（给人看）
+#   docs/version.json  发布 Manifest —— App 内更新与官网都读它，机器字段由本工作流写回
+#   GitHub Pages       托管 version.json 与官网静态文件
+# APK 只以 Release asset 分发，不进仓库、也不放 GitHub Pages。
+#
+# ⚠️ 顺序：写回 version.json 必须发生在 asset 上传**之后**。反过来的话 Manifest 会指向
+#    一个还不存在的下载地址，老客户端点更新直接 404。这也是机器字段只能由 CI 写、
+#    不能本地提前改的原因。
 #
 # 需要在仓库 Settings → Secrets and variables → Actions 配置：
 #   KEYSTORE_BASE64  密钥库文件的 base64（`base64 -w0 water_keystore.jks`）
@@ -16,14 +24,16 @@ name: Release
 #   打 tag 即发版：git push origin v<版本号>（tag 指向 versionName 一致的提交）
 #   手动触发保留：Actions → Release → Run workflow 填 tag，用于失败重跑（会覆盖已有 asset）
 #
-# 触发范围是 `v<数字>.<数字>.<数字>` 形态的 tag。注意 glob 的 `*` 会吃掉后缀，
-# 所以 `v1.3.0-beta.1` 这类预发布 tag **也会**触发 —— 但它会在「校验 tag 与 versionName 一致」
-# 那步失败退出，不会真的发版。要彻底排除预发布得再加一条 `!v*-*`（本仓库未实测过）。
+# 触发范围是 `v<数字>.<数字>.<数字>` 形态的 tag，并显式排除预发布。
+# 注意 glob 的 `*` 会吃掉后缀 —— 只写 'v[0-9]*.[0-9]*.[0-9]*' 的话 `v1.5.0-beta.1`
+# 也会匹配进来，所以下面加一条 `!v*-*` 把它挡在门外。
+# 本仓库没有 beta 发布流程：预发布 tag 应该什么都不做，而不是「跑起来再失败」。
 
 on:
   push:
     tags:
       - 'v[0-9]*.[0-9]*.[0-9]*'
+      - '!v*-*'
   workflow_dispatch:
     inputs:
       tag:
@@ -137,3 +147,29 @@ jobs:
             exit 1
           fi
           echo "摘要一致。"
+
+      # 机器字段（版本号 / apkUrl / sha256）由 CI 写回，人工不碰 —— 否则会出现
+      # 「Release 已经是新的、version.json 还是旧的」这种最难查的脱节。
+      # changelog 是 version.json 里唯一手写的字段，本步骤不动它。
+      #
+      # 用 GITHUB_TOKEN 推送的提交不会再触发 workflow（GitHub 的设计），所以不会自我循环。
+      # 推送目标写 HEAD:master：本步骤基于 tag 指向的提交，所以要求发版人先把 master 推上去
+      # （release.sh 的提示里就是这个顺序），否则这里会因非快进被拒。
+      - name: 把版本信息写回 docs/version.json
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+          APK_SUM: ${{ steps.apk.outputs.sum }}
+        run: |
+          python3 scripts/sync_version.py --sha256 "$APK_SUM"
+          python3 scripts/sync_version.py --check
+
+          if git diff --quiet -- docs/version.json; then
+            echo "docs/version.json 已经是最新，无需提交。"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/version.json
+          git commit -m "release: 同步 version.json 到 $TAG"
+          git push origin HEAD:master

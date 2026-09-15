@@ -1,26 +1,21 @@
 package com.example.waterreminder.data.remote
 
-/** 一次可用的更新，由 GitHub Releases API 的 latest release 解析而来。 */
+/**
+ * 一次可用的更新，由 GitHub Pages 上的 `version.json`（CI 在发版时自动生成的发布 Manifest）解析而来。
+ *
+ * ⚠️ 这些字段与 `version.json` 的顶层字段一一对应，是一份**兼容契约**：
+ * 已发布的 1.4.0 也用 Gson 按顶层字段反序列化这个文件。所以只能**新增**字段 ——
+ * 改名、删字段、或把它们挪进嵌套对象，都会让老客户端拿到 0/null，
+ * 表现为「永远没有更新」这种没有任何报错的静默失效。
+ */
 data class UpdateInfo(
+    /** 机器比较依据：直接与装机版本的 versionCode 比大小，不解析 versionName 字符串 */
+    val versionCode: Int,
+    /** 给人看的版本号，如 "1.5.0" */
     val versionName: String,
     val apkUrl: String,
     val changelog: String,
-    /** Release asset 的 SHA-256（GitHub 的 digest 字段，已去掉 `sha256:` 前缀）；取不到时为 null */
+    /** APK 的 SHA-256（小写十六进制）；缺失时为 null，此时下载后不做摘要校验 */
     val sha256: String? = null,
     val forceUpdate: Boolean = false
 )
-
-/**
- * 按数字段比较版本名，避免字符串比较把 "1.10.0" 判成小于 "1.9.0"。
- * 返回 >0 表示 [a] 更新，0 表示相同，<0 表示更旧；缺失或非数字段按 0 处理。
- */
-internal fun compareVersionNames(a: String, b: String): Int {
-    val left = a.trim().removePrefix("v").split('.')
-    val right = b.trim().removePrefix("v").split('.')
-    for (i in 0 until maxOf(left.size, right.size)) {
-        val l = left.getOrNull(i)?.takeWhile { it.isDigit() }?.toIntOrNull() ?: 0
-        val r = right.getOrNull(i)?.takeWhile { it.isDigit() }?.toIntOrNull() ?: 0
-        if (l != r) return l - r
-    }
-    return 0
-}

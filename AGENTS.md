@@ -63,10 +63,12 @@
 ### 版本与发版
 
 - `versionCode` 必须严格递增(脚本只能防版本文件回退,跨版本递增由发版人保证)。
-- `docs/version.json` 的 `versionCode`/`versionName`/`apkUrl` 必须由
-  `scripts/sync_version.py` 同步,不得手改这三项绕过校验;`changelog` 仍要手写,
-  脚本不动它。该文件有**两个用途,都不能删**(见「发布链路」);新版应用内更新
-  不走它,一律以 GitHub Release 为准。
+- `docs/version.json` 是**发布 Manifest**,App 内更新与官网都读它。它的机器字段
+  (`versionCode`/`versionName`/`apkUrl`/`sha256`)由 CI 在 Release 建好后写回,
+  不得手改;唯一手写的是 `changelog` 与 `forceUpdate`。
+  **本地发版不得提前改机器字段** —— 那会让 Manifest 指向一个还没上传的 asset,
+  老客户端点更新直接 404。字段结构是**兼容契约**(已发布的旧客户端按顶层字段
+  反序列化这个文件),只能新增,不得改名、删字段或挪进嵌套对象。
 - Release 缺 `keystore.properties` 时在 `packageRelease` 阶段失败是**刻意设计**
   (避免产出装不上的未签名 APK),**不得"修复"**。
 - `scripts/release.sh` 不自动 commit / push 也是**刻意设计**。未经用户明确确认,
@@ -92,19 +94,19 @@
 
 ## 发布链路
 
-版本信息的唯一来源是 **GitHub Release**,不是仓库里的任何文件。
+**权威来源**:版本号在 `app/build.gradle.kts`;**发布 Manifest 是 `docs/version.json`**
+—— App 内更新与官网都读它。GitHub Release 托管 APK asset 与给人看的 Release Notes。
 
-- 推形如 `v1.4.0` 的 tag → `release.yml` 构建签名 APK → 创建 Release 并上传
-  asset → 核对 asset 的 SHA-256。预发布 tag(如 `v1.3.0-beta.1`)也会触发(glob 的
-  `*` 会吃掉后缀),但会在「校验 tag 与 versionName 一致」那步失败退出,不会真的
-  发版。应用内更新(读 `/releases/latest`)与官网 `docs/`(前端现读 Releases API)
-  都以它为准,没有需要单独维护的版本清单。
-- `docs/version.json` 有**两个用途,都不能删**:①服务还在跑 1.5.0 之前的老客户端
-  (它们仍请求 Pages 上的老 URL);②**官网的静态兜底数据源** —— 未认证的 Releases
-  API 只有 60 次/小时且配额按出口 IP 共享,共用网络下会被别人的请求用光,
-  `site.js` 失败时会退回来读它。所以它的 `changelog` 必须认真写(API 失败时官网
-  直接拿它当更新说明),发版后也必须确认它的 `apkUrl` 指向的 asset 真的存在,
-  否则老客户端更新会 404。
+- 推形如 `v1.4.0` 的 tag → `release.yml` 构建签名 APK → 创建 Release 并上传 asset →
+  核对 asset 的 SHA-256 → **把 `versionCode`/`versionName`/`apkUrl`/`sha256` 写回
+  `docs/version.json` 并推 master**。预发布 tag(如 `v1.5.0-beta.1`)被 `!v*-*`
+  挡掉,不会触发 workflow。
+- ⚠️ **顺序**:先推 `master`,再推 tag。CI 的写回步骤基于 tag 指向的提交,要求远端
+  `master` 已是它的祖先,否则推送会被拒。
+- **机器字段只能由 CI 写**,人工提前改会让 Manifest 指向一个还不存在的下载地址,
+  老客户端点更新直接 404。本地发版只写 `changelog` 与 `forceUpdate`
+  (见「本仓库硬边界」)。这条取代了以前「发版后人工确认 asset 已上传」的要求 ——
+  CI 先上传 asset 再改 Manifest,顺序由机器保证。
 - 校验线上包必须用 Releases API 里 asset 的 `digest`(GitHub 官方算好的 SHA-256),
   **不得真去下那 11MB**;本机代理会截断响应体,下载比哈希更不可靠。
 - 本机没有 `gh` CLI。查 Release / asset 用
