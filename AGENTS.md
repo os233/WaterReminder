@@ -50,6 +50,9 @@
   两者都是对外动作,须分别确认,顺序见 README「发布流程」。
 - 换行符以 `.gitattributes` 为准:文本一律 LF 入库,`*.bat` 为 CRLF;
   尤其 `gradlew` 必须保持 LF(CRLF 会让 Linux CI 直接挂)。
+- `.workbuddy-ai/`、`.zcode/` 是 AI 工具的本地状态(含本机路径),已 gitignore,
+  不要提交。`gradlew` 与 `scripts/release.sh` 的 exec 位(100755)在 `git reset`
+  后会丢,丢了要用 `git update-index --chmod=+x` 补回来,否则 CI 上跑不起来。
 - `app/release/` 是本地 APK 留档(已 gitignore,不入库);分发走 GitHub Release
   asset,除发版流程外不要动。该目录只有本地跑过发版脚本才存在,别假设磁盘上
   有上一版 APK 可供比对 —— 校验线上包见「发布链路」。
@@ -87,6 +90,24 @@
   写多行 `python3 -c '...'` 时后续行回落到 0 列,会让块提前结束、后面几行被当成
   顶层内容 → YAML 非法。**宁可写成单行**(`release.yml` 曾因此写坏并阻断发版)。
 
+## 代码里的既有保证(改代码时不要破坏)
+
+- **更新检查永远不影响 App 运行**:断网、HTTP 非 2xx、JSON 结构不符、没有可用的
+  APK asset、下载地址不是 https —— 一律只返回 `Failed`,不抛异常、不弹错误提示。
+  自动检查**只在真问到结果时才写** `update_prefs.last_check_at`,否则一次断网会把
+  重试也压掉 12 小时。
+- **版本比较按数字段逐段比**(`compareVersionNames`),不要改成字符串比较 ——
+  `"1.10.0" > "1.9.0"` 靠它成立。Release 里没有 `versionCode`,所以发版时
+  `versionCode` 与 `versionName` 必须同序。
+- **下载完先校验 SHA-256,再交给安装器**:摘要取自 Release asset 的 `digest`
+  (只认 `sha256:` 前缀),不一致就删包并提示重试。别为"少一步"删掉这段。
+- Room 改实体必须补 `Migration`(当前 version 2,v1→v2 加了 `drinkType`/`hydration`);
+  **不要用 `fallbackToDestructiveMigration`** —— 饮水记录是用户唯一的数据。
+- 提醒用 `setExactAndAllowWhileIdle` 调度;免打扰支持跨午夜(`start > end` 的分支),
+  改提醒逻辑要保住这两点。保活服务是 `specialUse` 类型前台服务,不要换成 `dataSync`。
+- SharedPreferences 的 key 是已发布客户端的持久状态,改名等于清空老用户的设置
+  (`user_prefs`、`water_reminder_prefs`、`update_prefs`)。
+
 ## 项目检查
 
 验证受影响行为时使用这些既有检查,不另造:
@@ -102,8 +123,8 @@
 - 改过 `.github/workflows/*.yml` 后、推送前,本地用 pyyaml 解析一遍再推
   (`yaml.safe_load`;YAML 1.1 会把 `on:` 解析成布尔 `True`,属正常现象)。
   装了 pyyaml 的解释器路径同样见工作区 `.workbuddy-ai/memory/`。
-- 应用内更新的检查结果只写 `shared_prefs/update_prefs.xml` 的 `last_check_at`,
-  且**仅在请求成功时写** —— 想确认那次 GitHub API 请求真的通了,看这个文件即可。
+- 想确认应用内更新真的请求到了 GitHub:自动检查成功时才会写
+  `shared_prefs/update_prefs.xml` 的 `last_check_at`,看这个文件即可。
 - lint 目前只报告不拦截;仓库没有测试套件。不要为了"凑验证"新建测试
   脚手架,除非任务本身就是加测试。
 
