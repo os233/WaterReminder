@@ -58,9 +58,9 @@
   文件 —— 它们只存在于 `keystore.properties` 与 CI Secrets 里。
 - **贴输出前先扫一遍**:把脚本 / 构建 / 设备的输出粘进任何对外内容(汇报、issue、
   PR 评论、文档)之前,先检查有没有带出本机路径或设备串号,该换成相对路径或
-  `***` 再贴。已知会带出本机路径的地方:`app/build.gradle.kts` 里 `packageRelease`
-  的签名校验消息(打印 `keystore.properties` 的绝对路径),以及 Gradle / AGP /
-  `adb` 自身的报错与日志 —— 这类输出不得原样外发。
+  `***` 再贴。仓库自己的输出已按此收过一轮(`release.sh` 只报仓库名、
+  `packageRelease` 的校验消息只报 keystore 文件名),但 Gradle / AGP / `adb`
+  自身的报错与日志仍会带绝对路径 —— 这类输出不得原样外发。
 - 用户数据(饮水记录、`water_database`、`shared_prefs`)属于隐私:要展示其内容时
   先脱敏,或改用构造的样例数据。
 - **发现泄漏必须立即处理**:停止继续扩散并告知用户,由用户决定是否轮换口令或重建
