@@ -74,6 +74,15 @@
 - `versionCode` 必须严格递增（脚本只能防版本文件回退，跨版本递增由发版人保证），
   且与 `versionName` **同序** —— Manifest 的 `apkUrl` 文件名由 `versionName` 拼出，
   两者不同序会让客户端拿到一个对不上的下载地址。
+- **例外：0.0.1 重置（2026-09-15，一次性）**。所有 Release 与 tag 已清空，版本号从
+  `0.0.1` 重新起算 —— 所以 `versionCode` 是**从 1 重启**，不是从 8 继续递增；
+  `app/build.gradle.kts` 与 `docs/version.json` 里的 `versionCode = 1` 是当前正确状态，
+  不得「修」回 7 / 8。自本次之后恢复上面的「严格递增」约束。
+  这次还必须**手工**把 Manifest 的机器字段降到 0.0.1（且必须在推 tag 前就落在 master 上），
+  否则 `release.yml` 的 `sync_version.py --check` 会因「Manifest 比源码新」拦死构建 ——
+  这是对下一条「机器字段不得手改」的一次性豁免。
+  已确认并接受的代价：已装 1.4.0（`versionCode = 7`）的客户端会被判为最新而永久收不到
+  更新，且 Android 拒绝降级安装（`INSTALL_FAILED_VERSION_DOWNGRADE`），只能卸载重装。
 - `docs/version.json` 是**发布 Manifest**。它的机器字段
   （`versionCode` / `versionName` / `apkUrl` / `sha256`）**只能由 CI 在 Release 建好后
   写回**，不得手改；唯一手写的是 `changelog` 与 `forceUpdate`。
