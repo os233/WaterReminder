@@ -64,14 +64,23 @@
     return String(tag || '').replace(/^v/, '');
   }
 
-  /* Release Notes 是 Markdown，这里只处理 `## 标题` 与 `- 条目` 两种写法 */
+  /* 更新说明是轻 Markdown。version.json 的 changelog 用中文 + `1. 2. 3.` 编号写，
+     Release body 也是它（CI 从 changelog 生成），所以除了 `## 标题` 与 `- 条目`，
+     还得认有序列表 —— 否则每条都掉进普通段落分支，看不出列表结构。 */
   function renderNotes(markdown) {
     var lines = String(markdown || '').split('\n');
     var html = '';
-    var inList = false;
+    var listTag = null;
 
     function closeList() {
-      if (inList) { html += '</ul>'; inList = false; }
+      if (listTag) { html += '</' + listTag + '>'; listTag = null; }
+    }
+
+    function openList(tag) {
+      if (listTag === tag) return;
+      closeList();
+      html += '<' + tag + '>';
+      listTag = tag;
     }
 
     lines.forEach(function (raw) {
@@ -86,8 +95,16 @@
 
       var bullet = line.match(/^[-*+]\s+(.*)$/);
       if (bullet) {
-        if (!inList) { html += '<ul>'; inList = true; }
+        openList('ul');
         html += '<li>' + escapeHtml(bullet[1].replace(/\*\*/g, '')) + '</li>';
+        return;
+      }
+
+      /* 有序列表：`1. xxx` / `1、xxx` / `1) xxx` 都认 */
+      var ordered = line.match(/^\d+\s*[.、)]\s*(.*)$/);
+      if (ordered) {
+        openList('ol');
+        html += '<li>' + escapeHtml(ordered[1].replace(/\*\*/g, '')) + '</li>';
         return;
       }
 
