@@ -73,7 +73,13 @@ def load_json(path: Path) -> dict:
 
 
 def dump_json(path: Path, data: dict) -> None:
-    path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    # newline="\n"：Windows 上文本模式默认会把 \n 写成 CRLF，而 .gitattributes 约定文本一律 LF。
+    # 不加这个，每次同步后工作区副本都会变成 CRLF（入库虽会被规范化，但工作区与约定不一致）。
+    path.write_text(
+        json.dumps(data, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
 
 
 def cmd_sync() -> int:
