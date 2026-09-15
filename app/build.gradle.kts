@@ -78,10 +78,18 @@ android {
 tasks.matching { it.name == "packageRelease" }.configureEach {
     doFirst {
         check(hasReleaseKeystore) {
+            // 报错信息常被粘进 issue / 日志：只报状态与文件名，不打印本机绝对路径
+            val storeFileProp = keystoreProps.getProperty("storeFile")
+            val storeFileName = storeFileProp?.substringAfterLast('/')?.substringAfterLast('\\')
+            val storeFileState = if (storeFileProp.isNullOrBlank()) {
+                "未填写"
+            } else {
+                "已填写（$storeFileName），但该文件不存在"
+            }
             """
             release 签名不可用，已中止打包。
-              配置文件 : ${keystorePropsFile.path}${if (keystorePropsFile.exists()) " (已存在)" else " (不存在)"}
-              storeFile: ${keystoreProps.getProperty("storeFile") ?: "(未填写)"}
+              配置文件 : keystore.properties（项目根目录）—— ${if (keystorePropsFile.exists()) "存在" else "不存在"}
+              storeFile: $storeFileState
             请参照根目录 keystore.properties.example 补齐 storeFile / storePassword / keyAlias / keyPassword。
             """.trimIndent()
         }
