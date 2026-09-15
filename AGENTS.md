@@ -95,14 +95,17 @@
 ## 发布链路
 
 **权威来源**:版本号在 `app/build.gradle.kts`;**发布 Manifest 是 `docs/version.json`**
-—— App 内更新与官网都读它。GitHub Release 托管 APK asset 与给人看的 Release Notes。
+—— App 内更新与官网都读它。GitHub Release 托管 APK asset;Release 页面上的说明由 CI
+从 `changelog` 生成,不另写一份。
 
 - 推形如 `v1.4.0` 的 tag → `release.yml` 构建签名 APK → 创建 Release 并上传 asset →
   核对 asset 的 SHA-256 → **把 `versionCode`/`versionName`/`apkUrl`/`sha256` 写回
   `docs/version.json` 并推 master**。预发布 tag(如 `v1.5.0-beta.1`)被 `!v*-*`
   挡掉,不会触发 workflow。
-- ⚠️ **顺序**:先推 `master`,再推 tag。CI 的写回步骤基于 tag 指向的提交,要求远端
-  `master` 已是它的祖先,否则推送会被拒。
+- **顺序**:先推 `master`,再推 tag —— tag 要打在已经推到 master 的提交上。CI 的写回步骤
+  会先 `git fetch` + `git rebase origin/master` 再推,所以构建那几分钟里 master 又被推了
+  提交(发版后补文档很常见)也不会丢写回;不加这两步的话推送会被拒,结果是 Release 已建好、
+  Manifest 却没更新 —— 所有客户端永远收不到这个版本,且不报任何错。
 - **机器字段只能由 CI 写**,人工提前改会让 Manifest 指向一个还不存在的下载地址,
   老客户端点更新直接 404。本地发版只写 `changelog` 与 `forceUpdate`
   (见「本仓库硬边界」)。这条取代了以前「发版后人工确认 asset 已上传」的要求 ——

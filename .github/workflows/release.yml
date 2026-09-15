@@ -121,8 +121,16 @@ jobs:
             echo "Release $TAG 已存在，覆盖 asset"
             gh release upload "$TAG" app/build/outputs/apk/release/*.apk --clobber
           else
+            # Release 说明直接取 docs/version.json 的 changelog —— 那是更新说明唯一手写的地方，
+            # 官网更新日志页读的就是这个 body。用 --generate-notes 的话页面上只剩
+            # 「Full Changelog: <链接>」，对用户没有信息量。
+            NOTES=$(python3 -c "import json;print(json.load(open('docs/version.json',encoding='utf-8')).get('changelog') or '')")
+            if [ -z "$NOTES" ]; then
+              echo "::warning::docs/version.json 的 changelog 是空的，Release 说明与官网更新日志会没有内容"
+              NOTES="（本次发版没有填写更新说明）"
+            fi
             gh release create "$TAG" app/build/outputs/apk/release/*.apk \
-              --title "$TAG" --generate-notes
+              --title "$TAG" --notes "$NOTES"
           fi
           gh release view "$TAG" --json assets --jq '.assets[].name'
 
@@ -172,4 +180,10 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add docs/version.json
           git commit -m "release: 同步 version.json 到 $TAG"
+
+          # 构建这几分钟里 master 可能又被推了提交（发版后补文档是常规操作）。直接 push 会因
+          # 非快进被拒 —— 后果是 Release 已经建好、Manifest 却没更新，所有客户端永远收不到这个
+          # 版本，而且不报任何错。所以先 rebase 到远端 master 再推（实测过：不加这两行会被拒）。
+          git fetch origin master
+          git rebase origin/master
           git push origin HEAD:master

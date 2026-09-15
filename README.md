@@ -127,7 +127,7 @@ cp keystore.properties.example keystore.properties
 
 版本号写在 `app/build.gradle.kts`；**发布 Manifest 是 `docs/version.json`** —— App 内更新
 与官网都读它，机器字段由 CI 在发版时写回，人工只写 `changelog`。GitHub Release 负责托管
-APK asset 与给人看的 Release Notes。
+APK asset 与 Release 页面，页面上的说明由 CI 从 `changelog` 生成（不另写一份）。
 
 ```text
       app/build.gradle.kts   (versionCode / versionName，唯一权威来源)
@@ -165,15 +165,19 @@ APK asset 与给人看的 Release Notes。
 # 2. 手写 docs/version.json 的 changelog —— 这是它唯一人工维护的字段
 # 3. 本地构建 + 归档 + 校验（不会改 version.json 的机器字段，原因见下）
 ./scripts/release.sh
-# 4. 提交并推 master。此时 version.json 的版本号还是旧的，App 不会提示更新，也不会 404
-git add -A && git commit -m "release: 发布 <版本号>" && git push origin master
+# 4. 提交并推 master（只加这两个文件；不要 git add -A，会扫进无关残留）
+#    此时 version.json 的版本号还是旧的，App 不会提示更新，也不会 404
+git add app/build.gradle.kts docs/version.json
+git commit -m "release: 发布 <版本号>" && git push origin master
 # 5. 打 tag 并推送 → CI 构建 APK、创建 Release、上传 asset，然后把 version.json 的
 #    versionCode / versionName / apkUrl / sha256 写回并推 master
 git tag v<版本号> && git push origin v<版本号>
 ```
 
-⚠️ **顺序不能反**：先推 `master`，再推 tag。CI 的写回步骤基于 tag 指向的提交，
-要求远端 `master` 已经是它的祖先，否则推送会被拒。
+⚠️ **顺序不能反**：先推 `master`，再推 tag —— tag 要打在已经推到 master 的提交上。
+CI 写回时会先 `git fetch` + `git rebase origin/master` 再推，所以构建那几分钟里 master
+又被推了提交（发版后补文档很常见）也不会丢写回。不加这两步的话推送会被拒，结果是
+Release 已经建好、Manifest 却没更新 —— 所有客户端永远收不到这个版本，而且不报任何错。
 
 **为什么机器字段不能本地写**：Manifest 一旦指向新版本，App 就会让用户去下载那个地址。
 如果这时 asset 还没上传，用户点更新直接 404。让 CI 在 asset 就位**之后**写回，
@@ -199,8 +203,6 @@ App 读 `https://os233.github.io/WaterReminder/version.json` —— Pages 上的
 **为什么不读 GitHub Releases API**：未认证的 API 只有 60 次/小时，而且配额**按出口 IP
 共享** —— 公司、校园网、运营商 NAT 这类共用出口很容易被别人的请求用光，拿到 403 之后
 更新检查就静默失败了。静态文件在 CDN 上没有配额，App 也不必去猜 API 的响应结构。
-另外 API 的 `body` 是 Release Notes，本仓库实际是 `--generate-notes` 生成的
-「Full Changelog: <链接>」，对用户没有意义。
 
 ⚠️ **字段结构是兼容契约**：已发布的 1.4.0 也用 Gson 按顶层字段反序列化这个文件。
 缺字段会被静默当成 0/null（表现为「永远没有更新」）。所以只能**新增**字段 ——
