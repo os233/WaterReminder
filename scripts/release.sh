@@ -18,7 +18,8 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 ROOT="$(pwd)"
-echo "仓库根目录：$ROOT"
+# 只报仓库名，不打印绝对路径：脚本输出常被粘进 issue / 汇报，本机路径不外发
+echo "仓库根目录：$(basename "$ROOT")"
 
 # ── 0. 找 python（脚本用它同步版本号）────────────────────────────────
 PY=""
