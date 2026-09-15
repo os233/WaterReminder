@@ -37,19 +37,23 @@
 - 敏感信息一律脱敏后再输出:`keystore.properties`、`*.jks`、`local.properties`
   的内容只描述存在与用途,不回显明文密码、口令、别名;汇报、日志、提交
   信息、文档中出现的密钥、token、口令,用 `***` 或 `<redacted>` 替代。
-- `versionCode` 严格递增(脚本只能防 `version.json` 回退,跨版本递增由发版人保证)。
-  `version.json` 的 `versionCode`/`versionName`/`apkUrl` 由 `scripts/sync_version.py`
+- `versionCode` 严格递增(脚本只能防版本文件回退,跨版本递增由发版人保证)。
+  `docs/version.json` 的 `versionCode`/`versionName`/`apkUrl` 由 `scripts/sync_version.py`
   同步,不要手改这三项绕过校验;`changelog` 仍要手写,脚本不动它。
+  这个文件只是给 1.5.0 之前的老客户端过渡用,不是应用内更新的来源 ——
+  更新信息一律以 GitHub Release 为准。
 - Release 缺 `keystore.properties` 时在 `packageRelease` 阶段失败是
   **刻意设计**(避免产出装不上的未签名 APK),不要"修复"它。
 - `scripts/release.sh` 不自动 commit/push 也是**刻意设计**;未经用户明确
-  确认,代理不得 push 或发版。**推 `v*` tag 即发版**:release 工作流会自动
-  构建签名 APK、发布 Release;推 `master` 则上线 Pages 的 `version.json`。
+  确认,代理不得 push 或发版。**推 `v*.*.*` tag 即发版**:release 工作流会自动
+  构建签名 APK、发布 Release;推 `master` 则上线 Pages 官网(`docs/`)。
   两者都是对外动作,须分别确认,顺序见 README「发布流程」。
 - 换行符以 `.gitattributes` 为准:文本一律 LF 入库,`*.bat` 为 CRLF;
   尤其 `gradlew` 必须保持 LF(CRLF 会让 Linux CI 直接挂)。
 - `app/release/` 是本地 APK 留档(已 gitignore,不入库);分发走 GitHub Release
   asset,除发版流程外不要动。
+- `docs/` 是 GitHub Pages 的站点根,只放静态文件,不要引入构建步骤;
+  页面里的版本信息、更新日志一律现读 GitHub Releases API,不要另存一份。
 
 ## 项目检查
 

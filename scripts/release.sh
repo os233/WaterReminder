@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 #
-# 一键发版（本地）：构建签名 release APK → 归档到 app/release/ → 同步 version.json 与元数据。
+# 一键发版（本地）：构建签名 release APK → 归档到 app/release/ → 同步版本文件与元数据。
 #
 # 归档目录只作本地留档（已 gitignore）：APK 的分发走 GitHub Release asset，
-# 见 .github/workflows/release.yml。
+# 见 .github/workflows/release.yml。应用内更新读的是 GitHub Releases API，
+# 这里同步的 docs/version.json 只是给 1.5.0 之前的老版本客户端兜底（过渡用，将来会删）。
 #
 # 刻意不做的事：不自动 commit / push。发布是对外动作，留给人确认。
 #
@@ -60,9 +61,9 @@ cp -f "$APK_SRC" "app/release/$APK_NAME"
 echo "已归档：app/release/$APK_NAME"
 
 # ── 4. 同步版本号 ─────────────────────────────────────────────────
-# 放在构建之后：构建失败时 version.json 不会被提前改到不存在的产物上。
+# 放在构建之后：构建失败时版本文件不会被提前改到不存在的产物上。
 echo
-echo "▶ 同步 version.json 与 app/release/output-metadata.json…"
+echo "▶ 同步 docs/version.json 与 app/release/output-metadata.json…"
 "$PY" scripts/sync_version.py
 
 # ── 5. 校验（顺便兜住 apkUrl / 产物缺失这类漂移）───────────────────
@@ -119,10 +120,12 @@ fi
 echo
 echo "──────────────────────────────────────────────"
 echo "接下来还需要手工做："
-echo "  1. 编辑 version.json 的 changelog（脚本不动它）"
-echo "  2. 先把 APK 发到 GitHub Release（tag v<版本号> + 上传 asset），这一步不能和 4 调换"
-echo "  3. 提交：git add -A && git commit -m 'release: 发布 <版本号>'"
-echo "  4. 推送：git push origin master   （version.json 上线后，旧版本用户才会拿到新 apkUrl）"
+echo "  1. 打 tag 并推送：git tag v<版本号> && git push origin v<版本号>"
+echo "     （tag 必须打在 versionName 一致的提交上；CI 会自动构建签名 APK 并创建 Release）"
+echo "  2. 等 Release 建好后，编辑它的 Release Notes（写成「新增 / 优化 / 修复」分段，"
+echo "     App 的更新弹窗与官网更新日志都直接读它）"
+echo "  3. 手工补 docs/version.json 的 changelog（脚本不动它，只给老版本客户端看）"
+echo "  4. 提交并推 master：git add -A && git commit -m 'release: 发布 <版本号>' && git push origin master"
 echo
 echo "当前改动："
 git status --short

@@ -41,6 +41,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.waterreminder.data.WaterDatabase
+import com.example.waterreminder.data.remote.UpdateCheckResult
 import com.example.waterreminder.data.remote.UpdateChecker
 import com.example.waterreminder.data.remote.UpdateInfo
 import com.example.waterreminder.notification.AlarmManagerHelper
@@ -48,6 +49,7 @@ import com.example.waterreminder.notification.KeepAliveService
 import com.example.waterreminder.ui.HistoryScreen
 import com.example.waterreminder.ui.WaterReminderScreen
 import com.example.waterreminder.ui.theme.WaterReminderTheme
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
@@ -91,9 +93,11 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             var updateInfo by remember { mutableStateOf<UpdateInfo?>(null) }
+            val scope = rememberCoroutineScope()
 
             LaunchedEffect(Unit) {
-                updateInfo = UpdateChecker(this@MainActivity).checkForUpdate()
+                val result = UpdateChecker(this@MainActivity).checkForUpdate()
+                if (result is UpdateCheckResult.Available) updateInfo = result.info
             }
 
             WaterReminderTheme {
@@ -101,7 +105,26 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    AppNavigation(dao = dao)
+                    AppNavigation(
+                        dao = dao,
+                        // 手动检查：忽略 12 小时节流，并明确告诉用户是「最新」还是「没查到」
+                        onCheckUpdate = {
+                            scope.launch {
+                                val message = when (val result =
+                                    UpdateChecker(this@MainActivity).checkForUpdate(force = true)) {
+                                    is UpdateCheckResult.Available -> {
+                                        updateInfo = result.info
+                                        null
+                                    }
+                                    UpdateCheckResult.UpToDate -> "已是最新版本"
+                                    UpdateCheckResult.Failed -> "检查更新失败，请检查网络后重试"
+                                }
+                                message?.let {
+                                    Toast.makeText(this@MainActivity, it, Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
+                    )
                 }
             }
 
@@ -115,7 +138,7 @@ class MainActivity : ComponentActivity() {
                         if (!checker.checkInstallPermission()) {
                             checker.requestInstallPermission()
                         } else {
-                            checker.downloadAndInstall(info.apkUrl)
+                            checker.downloadAndInstall(info.apkUrl, info.sha256)
                             updateInfo = null
                         }
                     }
@@ -246,25 +269,39 @@ fun UpdateDialog(
                                 .padding(14.dp)
                                 .verticalScroll(rememberScrollState())
                         ) {
-                            info.changelog.split("\n").filter { it.isNotBlank() }.forEach { line ->
-                                Row(
-                                    modifier = Modifier.padding(vertical = 3.dp),
-                                    verticalAlignment = Alignment.Top
-                                ) {
-                                    Text(
-                                        text = "•",
-                                        fontSize = 14.sp,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.padding(end = 8.dp)
-                                    )
-                                    Text(
-                                        text = line.trimStart('-', ' ', '•'),
-                                        fontSize = 14.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        lineHeight = 20.sp
-                                    )
+                            // changelog 直接来自 Release Notes，是 Markdown：`## 分类` 当小标题，其余当条目
+                            info.changelog.split("\n")
+                                .map { it.trim() }
+                                .filter { it.isNotEmpty() }
+                                .forEach { line ->
+                                    if (line.startsWith("#")) {
+                                        Text(
+                                            text = line.trimStart('#', ' '),
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            modifier = Modifier.padding(top = 6.dp, bottom = 2.dp)
+                                        )
+                                    } else {
+                                        Row(
+                                            modifier = Modifier.padding(vertical = 3.dp),
+                                            verticalAlignment = Alignment.Top
+                                        ) {
+                                            Text(
+                                                text = "•",
+                                                fontSize = 14.sp,
+                                                color = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.padding(end = 8.dp)
+                                            )
+                                            Text(
+                                                text = line.trimStart('-', '*', '•', ' ').replace("**", ""),
+                                                fontSize = 14.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                lineHeight = 20.sp
+                                            )
+                                        }
+                                    }
                                 }
-                            }
                         }
                     }
 
@@ -311,7 +348,10 @@ fun UpdateDialog(
 }
 
 @Composable
-fun AppNavigation(dao: com.example.waterreminder.data.WaterRecordDao) {
+fun AppNavigation(
+    dao: com.example.waterreminder.data.WaterRecordDao,
+    onCheckUpdate: () -> Unit
+) {
     val navController = rememberNavController()
     NavHost(
         navController = navController,
@@ -332,7 +372,8 @@ fun AppNavigation(dao: com.example.waterreminder.data.WaterRecordDao) {
         composable("home") {
             WaterReminderScreen(
                 dao = dao,
-                onHistoryClick = { navController.navigate("history") }
+                onHistoryClick = { navController.navigate("history") },
+                onCheckUpdate = onCheckUpdate
             )
         }
         composable("history") {

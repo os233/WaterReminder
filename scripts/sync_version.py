@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
 """同步 / 校验版本号，避免多处副本脱节。
 
-版本号写在三个地方，历史上出现过脱节（version.json 停在旧版本，导致应用内更新永远不触发）：
+版本号写在三个地方，历史上出现过脱节（版本文件停在旧版本，导致应用内更新永远不触发）：
 
-  1. app/build.gradle.kts            —— 唯一权威来源
-  2. version.json                    —— 应用内更新检查读它
-  3. app/release/output-metadata.json —— 归档产物的元数据
+  1. app/build.gradle.kts              —— 唯一权威来源
+  2. docs/version.json                 —— 过渡兼容文件，见下
+  3. app/release/output-metadata.json  —— 归档产物的元数据
+
+关于 docs/version.json：1.5.0 起应用内更新改读 GitHub Releases API，这个文件不再是
+更新源，只是留给「还在跑 1.5.0 之前版本」的已安装客户端 —— 它们仍会请求
+https://os233.github.io/WaterReminder/version.json（Pages 源设为 master 的 /docs 目录，
+该 URL 正好映射到 docs/version.json）。等老版本客户端基本升级完，连同这个文件与脚本里的
+VERSION_JSON 一起删掉即可。
 
 用法：
 
@@ -26,7 +32,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 GRADLE_FILE = ROOT / "app" / "build.gradle.kts"
-VERSION_JSON = ROOT / "version.json"
+VERSION_JSON = ROOT / "docs" / "version.json"
 METADATA_JSON = ROOT / "app" / "release" / "output-metadata.json"
 RELEASE_DIR = ROOT / "app" / "release"
 
@@ -72,25 +78,26 @@ def dump_json(path: Path, data: dict) -> None:
 
 def cmd_sync() -> int:
     code, name = read_source_version()
+    vj = rel(VERSION_JSON)
     info = load_json(VERSION_JSON)
     changed: list[str] = []
 
     old_code = info.get("versionCode")
     if old_code is not None and code < int(old_code):
         sys.exit(
-            f"[错误] version.json 的 versionCode={old_code} 比源码的 {code} 还新，"
+            f"[错误] {vj} 的 versionCode={old_code} 比源码的 {code} 还新，"
             "拒绝回退。请先确认 app/build.gradle.kts 的版本号。"
         )
 
     for key, value in (("versionCode", code), ("versionName", name)):
         if info.get(key) != value:
-            changed.append(f"version.json: {key} {info.get(key)!r} → {value!r}")
+            changed.append(f"{vj}: {key} {info.get(key)!r} → {value!r}")
             info[key] = value
 
     url = info.get("apkUrl", "")
     new_url = rewrite_apk_url(url, name)
     if new_url != url:
-        changed.append(f"version.json: apkUrl → {new_url}")
+        changed.append(f"{vj}: apkUrl → {new_url}")
         info["apkUrl"] = new_url
 
     if changed:
@@ -120,14 +127,15 @@ def cmd_sync() -> int:
         for line in changed:
             print("  -", line)
     else:
-        print("三个文件的版本号已经一致，无需改动。")
+        print("版本号已经一致，无需改动。")
     return 0
 
 
 def cmd_check() -> int:
-    """校验不变量。注意：允许 version.json 落后于源码（开发中版本号先升是正常的），
+    """校验不变量。注意：允许版本文件落后于源码（开发中版本号先升是正常的），
     但不允许它超前，也不允许 apkUrl 指向一个不存在的产物。"""
     code, name = read_source_version()
+    vj = rel(VERSION_JSON)
     problems: list[str] = []
 
     info = load_json(VERSION_JSON)
@@ -136,15 +144,15 @@ def cmd_check() -> int:
     apk_url = info.get("apkUrl", "")
 
     if not isinstance(vj_code, int) or vj_code <= 0:
-        problems.append(f"version.json 的 versionCode 非法：{vj_code!r}")
+        problems.append(f"{vj} 的 versionCode 非法：{vj_code!r}")
     elif vj_code > code:
         problems.append(
-            f"version.json 的 versionCode={vj_code} 比源码的 {code} 还新"
-            "（多半是升了 version.json 却忘了升 app/build.gradle.kts）"
+            f"{vj} 的 versionCode={vj_code} 比源码的 {code} 还新"
+            "（多半是升了它却忘了升 app/build.gradle.kts）"
         )
 
     if not vj_name or not re.fullmatch(r"\d+\.\d+\.\d+", str(vj_name)):
-        problems.append(f"version.json 的 versionName 非法：{vj_name!r}（期望 x.y.z）")
+        problems.append(f"{vj} 的 versionName 非法：{vj_name!r}（期望 x.y.z）")
 
     if not apk_url.startswith("https://"):
         problems.append(f"apkUrl 必须是 https：{apk_url!r}")
@@ -160,7 +168,7 @@ def cmd_check() -> int:
         elif not (RELEASE_DIR / actual).exists():
             problems.append(
                 f"apkUrl 指向的 {rel(RELEASE_DIR / actual)} 不存在"
-                "（Pages 上会 404，应用内更新会失败）"
+                "（Pages 上会 404，老版本客户端的更新会失败）"
             )
 
     if METADATA_JSON.exists():
@@ -170,11 +178,11 @@ def cmd_check() -> int:
             if element.get("versionCode") != vj_code or element.get("versionName") != vj_name:
                 problems.append(
                     f"{rel(METADATA_JSON)} 的版本号（{element.get('versionCode')} / "
-                    f"{element.get('versionName')}）与 version.json（{vj_code} / {vj_name}）不一致"
+                    f"{element.get('versionName')}）与 {vj}（{vj_code} / {vj_name}）不一致"
                 )
 
     print(f"源码版本：versionCode={code} versionName={name}")
-    print(f"version.json：versionCode={vj_code} versionName={vj_name}")
+    print(f"{vj}：versionCode={vj_code} versionName={vj_name}")
 
     if problems:
         print("\n[校验失败]")
@@ -192,7 +200,7 @@ def cmd_expect_tag(tag: str) -> int:
     if tag != expected:
         print(
             f"[错误] tag {tag} 与 app/build.gradle.kts 的 versionName {name} 不一致"
-            f"（应为 {expected}），APK 文件名与 version.json 的 apkUrl 会对不上。"
+            f"（应为 {expected}），APK 文件名与 Release asset 会对不上。"
         )
         return 1
     print(f"tag {tag} 与 versionName {name} 一致。")
@@ -200,7 +208,7 @@ def cmd_expect_tag(tag: str) -> int:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="同步 / 校验 version.json 与源码版本号")
+    parser = argparse.ArgumentParser(description="同步 / 校验版本文件与源码版本号")
     parser.add_argument("--check", action="store_true", help="只校验不写文件")
     parser.add_argument("--expect-tag", metavar="TAG", help="断言 tag 与 versionName 一致")
     args = parser.parse_args()

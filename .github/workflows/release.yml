@@ -1,7 +1,9 @@
 name: Release
 
 # 打 tag 即发版：构建签名 release APK，创建 GitHub Release 并把 APK 作为 asset 上传。
-# 这样 APK 不必再进仓库，version.json 的 apkUrl 指向 Release 下载地址即可。
+#
+# Release 是版本信息的唯一来源：应用内更新读 /releases/latest，官网的下载页与更新日志
+# 也直接读它。APK 只以 Release asset 分发，不进仓库、也不放 GitHub Pages。
 #
 # 需要在仓库 Settings → Secrets and variables → Actions 配置：
 #   KEYSTORE_BASE64  密钥库文件的 base64（`base64 -w0 water_keystore.jks`）
@@ -13,11 +15,13 @@ name: Release
 # 用法（先在 Settings → Secrets 配好签名信息）：
 #   打 tag 即发版：git push origin v<版本号>（tag 指向 versionName 一致的提交）
 #   手动触发保留：Actions → Release → Run workflow 填 tag，用于失败重跑（会覆盖已有 asset）
+#
+# 只对正式版本 tag（v1.2.3 形态）触发；v1.3.0-beta.1 这类预发布 tag 不会走这里。
 
 on:
   push:
     tags:
-      - 'v*'
+      - 'v[0-9]*.[0-9]*.[0-9]*'
   workflow_dispatch:
     inputs:
       tag:
@@ -87,6 +91,15 @@ jobs:
       - name: 校验版本号一致性
         run: python3 scripts/sync_version.py --check
 
+      # 应用内更新会拿这个摘要校验下载到的安装包，先记下本地产物自己的值
+      - name: 计算 APK 的 SHA-256
+        id: apk
+        run: |
+          APK=$(ls app/build/outputs/apk/release/*.apk | head -1)
+          SUM=$(sha256sum "$APK" | cut -d' ' -f1)
+          echo "本地构建产物 SHA-256：$SUM"
+          echo "sum=$SUM" >> "$GITHUB_OUTPUT"
+
       - name: 创建 Release 并上传 APK
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -100,3 +113,28 @@ jobs:
               --title "$TAG" --generate-notes
           fi
           gh release view "$TAG" --json assets --jq '.assets[].name'
+
+      # 应用内更新按这个摘要判断安装包是否完整，所以这里必须核对上传后的值
+      - name: 核对 Release asset 的 SHA-256
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+          LOCAL_SUM: ${{ steps.apk.outputs.sum }}
+        run: |
+          REMOTE_SUM=$(curl -sSL -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/tags/$TAG" \
+            | python3 -c 'import json,sys
+assets = json.load(sys.stdin).get("assets") or []
+apk = [a for a in assets if a["name"].lower().endswith(".apk")]
+print((apk[0].get("digest") or "").removeprefix("sha256:") if apk else "")')
+          echo "Release asset 的 SHA-256：$REMOTE_SUM"
+          if [ -z "$REMOTE_SUM" ]; then
+            echo "::error::取不到 Release asset 的摘要，GitHub 可能还没算完"
+            exit 1
+          fi
+          if [ "$REMOTE_SUM" != "$LOCAL_SUM" ]; then
+            echo "::error::Release asset 的 SHA-256 与本地构建产物不一致，应用内更新会因此拒绝安装"
+            exit 1
+          fi
+          echo "摘要一致。"

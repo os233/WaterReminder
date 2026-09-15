@@ -12,42 +12,124 @@ import android.provider.Settings
 import android.widget.Toast
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
-import com.google.gson.Gson
+import com.google.gson.JsonObject
+import com.google.gson.JsonParser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
+import java.security.MessageDigest
 
+/** 一次检查的结果。手动检查要区分「确实最新」和「没查到」，所以不用 null 表示两者。 */
+sealed interface UpdateCheckResult {
+    /** 有可用更新 */
+    data class Available(val info: UpdateInfo) : UpdateCheckResult
+
+    /** 已是最新；被节流跳过时也返回这个（自动检查对两者都是「不提示」） */
+    data object UpToDate : UpdateCheckResult
+
+    /** 没查到：断网、HTTP 非 2xx、JSON 结构不符、没有可用的 APK asset */
+    data object Failed : UpdateCheckResult
+}
+
+/**
+ * 更新检查与安装。
+ *
+ * 版本信息的唯一来源是 GitHub Releases（`/releases/latest`），不再依赖 GitHub Pages 上的
+ * version.json —— Pages 挂了也不该影响 App 检查更新。
+ */
 class UpdateChecker(private val context: Context) {
     private val client = OkHttpClient()
-    private val gson = Gson()
 
-    private val versionUrl = "https://os233.github.io/WaterReminder/version.json"
+    companion object {
+        private const val API_LATEST_RELEASE =
+            "https://api.github.com/repos/os233/WaterReminder/releases/latest"
 
-    suspend fun checkForUpdate(): UpdateInfo? = withContext(Dispatchers.IO) {
+        /** Release Notes 里带这个标记即视为强制更新 */
+        private const val FORCE_UPDATE_MARKER = "<!-- force-update -->"
+
+        private const val PREFS = "update_prefs"
+        private const val KEY_LAST_CHECK = "last_check_at"
+
+        /** 自动检查的最小间隔：未认证的 GitHub API 配额只有 60 次/小时，别每次启动都打 */
+        private const val CHECK_INTERVAL_MS = 12 * 60 * 60 * 1000L
+    }
+
+    /**
+     * 检查是否有新版本。
+     *
+     * 距上次成功检查不足 [CHECK_INTERVAL_MS] 时直接返回 [UpdateCheckResult.UpToDate]；
+     * [force] 为 true（手动检查）则忽略节流。
+     * 任何失败都只返回 [UpdateCheckResult.Failed]，不抛异常 ——
+     * 更新检查失败不等于 App 运行失败。
+     */
+    suspend fun checkForUpdate(force: Boolean = false): UpdateCheckResult = withContext(Dispatchers.IO) {
         try {
-            val request = Request.Builder().url(versionUrl).build()
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return@withContext null
-
-                val body = response.body?.string() ?: return@withContext null
-                val info = gson.fromJson(body, UpdateInfo::class.java)
-
-                val currentVersion = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                    context.packageManager.getPackageInfo(context.packageName, 0).longVersionCode
-                } else {
-                    @Suppress("DEPRECATION")
-                    context.packageManager.getPackageInfo(context.packageName, 0).versionCode.toLong()
-                }
-
-                if (info.versionCode > currentVersion) info else null
+            val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            val lastCheck = prefs.getLong(KEY_LAST_CHECK, 0L)
+            if (!force && System.currentTimeMillis() - lastCheck < CHECK_INTERVAL_MS) {
+                return@withContext UpdateCheckResult.UpToDate
             }
+
+            val request = Request.Builder()
+                .url(API_LATEST_RELEASE)
+                .header("Accept", "application/vnd.github+json")
+                .header("User-Agent", "WaterReminder")
+                .build()
+
+            val body = client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@withContext UpdateCheckResult.Failed
+                // 只在真的问到了才记时间，否则一次断网会把重试也压掉 12 小时
+                prefs.edit().putLong(KEY_LAST_CHECK, System.currentTimeMillis()).apply()
+                response.body?.string() ?: return@withContext UpdateCheckResult.Failed
+            }
+
+            parseLatestRelease(body)
         } catch (e: Exception) {
             e.printStackTrace()
-            null
+            UpdateCheckResult.Failed
         }
     }
+
+    /** 解析 `/releases/latest` 的响应。 */
+    private fun parseLatestRelease(json: String): UpdateCheckResult {
+        val root = JsonParser.parseString(json).asJsonObject
+
+        val tag = root.stringOrNull("tag_name")?.takeIf { it.isNotBlank() }
+            ?: return UpdateCheckResult.Failed
+        val remoteVersion = tag.removePrefix("v")
+        if (compareVersionNames(remoteVersion, currentVersionName()) <= 0) {
+            return UpdateCheckResult.UpToDate
+        }
+
+        val asset = root.getAsJsonArray("assets")
+            ?.mapNotNull { if (it.isJsonObject) it.asJsonObject else null }
+            ?.firstOrNull { it.stringOrNull("name")?.endsWith(".apk", ignoreCase = true) == true }
+            ?: return UpdateCheckResult.Failed
+
+        val apkUrl = asset.stringOrNull("browser_download_url") ?: return UpdateCheckResult.Failed
+        // 更新包只允许走 HTTPS，拒绝任何明文下载
+        if (!apkUrl.startsWith("https://")) return UpdateCheckResult.Failed
+
+        val body = root.stringOrNull("body").orEmpty()
+        return UpdateCheckResult.Available(
+            UpdateInfo(
+                versionName = remoteVersion,
+                apkUrl = apkUrl,
+                changelog = body.replace(FORCE_UPDATE_MARKER, "").trim(),
+                // 只认 sha256 摘要；GitHub 换成别的算法时不拿它当校验值用
+                sha256 = asset.stringOrNull("digest")
+                    ?.takeIf { it.startsWith("sha256:") }
+                    ?.removePrefix("sha256:")
+                    ?.takeIf { it.isNotBlank() },
+                forceUpdate = body.contains(FORCE_UPDATE_MARKER)
+            )
+        )
+    }
+
+    private fun currentVersionName(): String =
+        context.packageManager.getPackageInfo(context.packageName, 0).versionName.orEmpty()
 
     fun checkInstallPermission(): Boolean {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -64,7 +146,11 @@ class UpdateChecker(private val context: Context) {
         }
     }
 
-    fun downloadAndInstall(apkUrl: String) {
+    /**
+     * 下载并安装更新。[expectedSha256] 非空时，下载完成后先校验文件摘要，
+     * 不一致就删除安装包并提示重试，不会把它交给安装器。
+     */
+    fun downloadAndInstall(apkUrl: String, expectedSha256: String? = null) {
         val fileName = "waterreminder_update.apk"
         val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
         File(downloadDir, fileName).delete()
@@ -104,6 +190,12 @@ class UpdateChecker(private val context: Context) {
                 val file = File(downloadDir, fileName)
                 if (!file.exists()) return
 
+                if (expectedSha256 != null && !expectedSha256.equals(sha256Of(file), ignoreCase = true)) {
+                    file.delete()
+                    Toast.makeText(context, "安装包校验失败，已删除，请重试", Toast.LENGTH_LONG).show()
+                    return
+                }
+
                 val uri = FileProvider.getUriForFile(
                     context,
                     "${context.packageName}.fileprovider",
@@ -126,4 +218,27 @@ class UpdateChecker(private val context: Context) {
             ContextCompat.RECEIVER_NOT_EXPORTED
         )
     }
+
+    /** 计算文件的 SHA-256（小写十六进制）；读失败返回 null。 */
+    private fun sha256Of(file: File): String? = try {
+        val digest = MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { stream ->
+            val buffer = ByteArray(8 * 1024)
+            while (true) {
+                val read = stream.read(buffer)
+                if (read <= 0) break
+                digest.update(buffer, 0, read)
+            }
+        }
+        digest.digest().joinToString("") { "%02x".format(it) }
+    } catch (e: Exception) {
+        e.printStackTrace()
+        null
+    }
+}
+
+/** 取 JSON 字段的字符串值；字段缺失或是 null 时返回 null（而不是抛异常）。 */
+private fun JsonObject.stringOrNull(key: String): String? {
+    val element = get(key) ?: return null
+    return if (element.isJsonPrimitive) element.asString else null
 }

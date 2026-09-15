@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.WaterDrop
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -68,6 +69,7 @@ internal fun isCompactViewport(): Boolean =
 fun WaterReminderScreen(
     dao: WaterRecordDao,
     onHistoryClick: () -> Unit,
+    onCheckUpdate: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -78,6 +80,7 @@ fun WaterReminderScreen(
     var selectedDrink by remember { mutableStateOf(DrinkType.WATER) }
     var showCustomDialog by remember { mutableStateOf(false) }
     var customAmount by remember { mutableStateOf("") }
+    var showAboutDialog by remember { mutableStateOf(false) }
 
     // 跟踪"今天"是哪天：跨过午夜后自动刷新，避免界面停留在昨天的数据
     var today by remember { mutableStateOf(LocalDate.now()) }
@@ -452,6 +455,27 @@ fun WaterReminderScreen(
 
         // 提醒区域
         ReminderSection()
+
+        // 页脚：关于 / 手动检查更新。
+        // 放在底部而不是顶栏：窄屏（360dp）下顶栏已经被「日期 + 连续达标徽章 + 历史按钮」
+        // 占满，再加一个按钮会被挤爆；追加到 Column 末尾不会改变上面快速记录按钮的位置。
+        TextButton(
+            onClick = { showAboutDialog = true },
+            modifier = Modifier
+                .align(Alignment.CenterHorizontally)
+                .padding(top = if (compact) 4.dp else 8.dp),
+            colors = ButtonDefaults.textButtonColors(
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.Info,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp)
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text("关于", fontSize = 14.sp)
+        }
     }
 
     // 自定义水量弹窗
@@ -503,6 +527,17 @@ fun WaterReminderScreen(
                 }
             },
             shape = RoundedCornerShape(20.dp)
+        )
+    }
+
+    // 关于 / 手动检查更新
+    if (showAboutDialog) {
+        AboutDialog(
+            onDismiss = { showAboutDialog = false },
+            onCheckUpdate = {
+                showAboutDialog = false
+                onCheckUpdate()
+            }
         )
     }
 
@@ -562,6 +597,67 @@ fun WaterReminderScreen(
             shape = RoundedCornerShape(20.dp)
         )
     }
+}
+
+/**
+ * 「关于」弹窗：显示版本号，并提供手动检查更新。
+ * 自动检查最多每 12 小时一次，用户关掉更新弹窗后需要有个地方能主动再查一次。
+ */
+@Composable
+private fun AboutDialog(
+    onDismiss: () -> Unit,
+    onCheckUpdate: () -> Unit
+) {
+    val context = LocalContext.current
+    val versionName = remember {
+        context.packageManager.getPackageInfo(context.packageName, 0).versionName.orEmpty()
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                imageVector = Icons.Outlined.Info,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(32.dp)
+            )
+        },
+        title = { Text("关于") },
+        text = {
+            Column {
+                Text(
+                    text = "喝水提醒 WaterReminder",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "版本 $versionName",
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "开源、无广告、无账号。饮水记录只保存在本机，不会上传。",
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onCheckUpdate) {
+                Text("检查更新")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("关闭")
+            }
+        },
+        shape = RoundedCornerShape(20.dp)
+    )
 }
 
 private fun recordDrink(

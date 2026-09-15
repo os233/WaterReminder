@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>使用文档 — 喝水提醒 WaterReminder</title>
+<meta name="description" content="WaterReminder 使用说明：首次启动权限设置、日常记录、提醒配置、历史统计与常见问题排查。">
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="inner">
+    <a class="brand" href="../">
+      <svg viewBox="0 0 24 24" aria-hidden="true" fill="none">
+        <path d="M12 2.6c3.9 4.5 6.4 7.9 6.4 11.2A6.4 6.4 0 0 1 12 20.2a6.4 6.4 0 0 1-6.4-6.4c0-3.3 2.5-6.7 6.4-11.2Z"
+              fill="currentColor" opacity=".16"/>
+        <path d="M12 2.6c3.9 4.5 6.4 7.9 6.4 11.2A6.4 6.4 0 0 1 12 20.2a6.4 6.4 0 0 1-6.4-6.4c0-3.3 2.5-6.7 6.4-11.2Z"
+              stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+        <path d="M9 13.4c0 1.7 1.3 3 3 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+      </svg>
+      喝水提醒
+    </a>
+    <nav class="nav">
+      <a href="../">首页</a>
+      <a href="../download/">下载</a>
+      <a href="../docs/" aria-current="page">使用文档</a>
+      <a href="../changelog/">更新日志</a>
+      <a href="../privacy/">隐私政策</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+  <h1>使用文档</h1>
+  <p class="lede">从第一次打开到提醒稳定运行，下面这些是实际会用到的部分。</p>
+
+  <h2>首次启动</h2>
+  <ul>
+    <li>Android 13+ 会弹出通知权限申请，允许后提醒才能显示</li>
+    <li>Android 12+ 需要在系统设置里授予「闹钟和提醒」权限，否则提醒时间会不准</li>
+    <li>部分国产 ROM（小米 / 华为 / OPPO / vivo 等）需要手动允许自启动与后台运行，否则提醒会被系统清理掉</li>
+    <li>建议关闭针对本应用的电池优化，长期挂后台才稳</li>
+  </ul>
+
+  <h2>日常使用</h2>
+  <ul>
+    <li><strong>记录</strong>：首页点饮品按钮记一杯；需要精确的毫升数就用「自定义」输入</li>
+    <li><strong>目标</strong>：点首页的目标数字即可修改，范围 1000–4000 ml，步长 100</li>
+    <li><strong>提醒</strong>：首页进入「设置提醒」，选 1 / 2 / 3 小时间隔；夜间免打扰可设起止时间，支持跨午夜</li>
+    <li><strong>历史</strong>：首页进入历史页，查看最近 7 天汇总与月历，支持多选删除</li>
+  </ul>
+
+  <h2>关于水合系数</h2>
+  <p>不同饮品的实际补水效果不同，所以总量不是简单把毫升数相加，而是乘上系数后再累计。</p>
+  <table>
+    <thead>
+      <tr><th>饮品</th><th>系数</th><th>说明</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>水</td><td>1.00</td><td>白水</td></tr>
+      <tr><td>茶</td><td>0.95</td><td></td></tr>
+      <tr><td>果汁</td><td>0.85</td><td></td></tr>
+      <tr><td>咖啡</td><td>0.80</td><td></td></tr>
+      <tr><td>气泡水</td><td>1.00</td><td></td></tr>
+    </tbody>
+  </table>
+  <p>例如 200 ml 咖啡按 160 ml 计入当日总量。</p>
+
+  <h2>更新</h2>
+  <p>App 启动时会向 GitHub 查询最新发布版本，有新版就弹窗提示，确认后下载安装包、校验 SHA-256，再交给系统安装。</p>
+  <ul>
+    <li>为避免频繁请求，自动检查最多每 12 小时一次</li>
+    <li>想立刻检查：首页滑到底部点「关于」→「检查更新」</li>
+    <li>检查更新失败（断网、GitHub 不可达等）不会影响 App 正常使用，只是不提示</li>
+    <li>安装包必须由本项目发布密钥签名，签名不一致时系统会拒绝覆盖安装</li>
+  </ul>
+
+  <h2>常见问题</h2>
+
+  <h3>提醒不响或不准时</h3>
+  <ol>
+    <li>确认已授予通知权限与「闹钟和提醒」权限</li>
+    <li>在系统设置里把本应用加入电池优化白名单，并允许自启动 / 后台运行</li>
+    <li>检查免打扰时段是否覆盖了当前时间（支持跨午夜，容易设反）</li>
+  </ol>
+
+  <h3>换了手机，记录会同步过来吗</h3>
+  <p>不会。饮水记录只存在本机数据库里，App 不上传也不下载任何用户数据，请用系统自带的备份 / 换机工具迁移。</p>
+
+  <h3>想装旧版本</h3>
+  <p>到 <a href="https://github.com/os233/WaterReminder/releases">GitHub Releases</a> 选对应版本即可。注意：不同签名的包无法互相覆盖安装。</p>
+
+  <h3>发现 bug 或想提需求</h3>
+  <p>欢迎到 <a href="https://github.com/os233/WaterReminder/issues">GitHub Issues</a> 反馈，附上机型、Android 版本与复现步骤会快很多。</p>
+
+</main>
+
+<footer class="site-footer">
+  <div class="inner">
+    <span>© 2026 WaterReminder · MIT License</span>
+    <span class="links">
+      <a href="../">首页</a>
+      <a href="../download/">下载</a>
+      <a href="../changelog/">更新日志</a>
+      <a href="../privacy/">隐私政策</a>
+      <a href="https://github.com/os233/WaterReminder">GitHub</a>
+    </span>
+  </div>
+</footer>
+
+</body>
+</html>
