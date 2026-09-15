@@ -137,6 +137,34 @@
 - SharedPreferences 的 key 是已发布客户端的持久状态,**不得改名**(改名等于清空
   老用户的设置):`user_prefs`、`water_reminder_prefs`、`update_prefs`。
 
+## 环境与依赖约束
+
+工具链版本是硬性约束。构建或脚本报错时先怀疑环境,不得靠改版本号、升依赖"修"过去:
+
+| 组件 | 版本 | 约束 |
+| --- | --- | --- |
+| JDK | 17 或 21 | Gradle 8.11.1 只支持到 Java 23,**24+ 直接不可用**;CI 固定 17 |
+| Android SDK | platform `android-36` | `compileSdk` / `targetSdk` 都是 36;CI 另装 `build-tools;36.0.0` |
+| Gradle | 8.11.1 | 只走 wrapper(wrapper jar 已入库),不得手装、不得随手升版本 |
+| AGP / Kotlin / KSP | 8.10.1 / 2.0.21 / 2.0.21-1.0.28 | 与 Gradle 8.11.1 配套,不要单独升级 |
+| Python | 3.9+ | **只给 `scripts/` 用**,不参与构建 |
+
+- **必须先设置 `JAVA_HOME`** 再跑 CLI 构建;未设置时 `./gradlew` 会直接报
+  `JAVA_HOME is not set` —— 这是环境问题,不是代码坏了。本机具体路径见工作区
+  `.workbuddy-ai/memory/`,不得写进本文件。
+- Android SDK 路径通过 `ANDROID_HOME` / `ANDROID_SDK_ROOT` 或 `local.properties`
+  指定;`local.properties` 不入库,不得把本机绝对路径写进任何入库文件。
+- 依赖版本直接写在 `app/build.gradle.kts` 的 `dependencies` 块里(**仓库没有
+  version catalog**);仓库来源固定在 `settings.gradle.kts` 的 `google()` /
+  `mavenCentral()`。那里设了 `FAIL_ON_PROJECT_REPOS`,在模块里另写 `repositories`
+  会直接构建失败,不得这么做。
+- 新增第三方依赖前必须先说明用途,以及为什么现有能力(已装的 OkHttp / Room /
+  Compose 等、平台 API)不够用;不得为省几行代码引库(见「本项目常见过度工程」)。
+- `scripts/` 下的 Python 脚本**必须只用标准库**:CI 用裸 `python3` 直接跑
+  `sync_version.py`,没有任何 pip 安装步骤。
+- Java 源码与字节码级别固定 17(`compileOptions` 与 `kotlinOptions.jvmTarget`),
+  `minSdk = 26`:用到的平台 API 必须在 API 26 起可用,更高的要按 `SDK_INT` 分支。
+
 ## 项目检查
 
 验证受影响行为时使用这些既有检查,不另造:
@@ -146,9 +174,6 @@
 | 编译 | `./gradlew assembleDebug`(JDK 17–23,推荐 17 或 21) |
 | 版本一致性 | `python scripts/sync_version.py --check` |
 
-- CLI 构建前必须先设置 `JAVA_HOME`(Gradle 8.11.1 不支持 24+)。未设置时
-  `./gradlew` 会直接报 `JAVA_HOME is not set`,不是构建坏了。
-  本机具体路径见工作区 `.workbuddy-ai/memory/`,不得写进本文件。
 - 改过 `.github/workflows/*.yml` 后、推送前,必须本地用 pyyaml 解析一遍
   (`yaml.safe_load`;YAML 1.1 会把 `on:` 解析成布尔 `True`,属正常现象)。
   装了 pyyaml 的解释器路径同样见工作区 `.workbuddy-ai/memory/`。
