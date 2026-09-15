@@ -2,7 +2,8 @@
 
 一个轻量的 Android 喝水提醒应用。按小时提醒你喝水，记录每一杯，并按饮品类型折算真实补水量。
 
-Kotlin + Jetpack Compose 编写，无广告、无账号、无联网上传（只在检查更新时请求一次 GitHub 的公开 API）。
+Kotlin + Jetpack Compose 编写，无广告、无账号、无联网上传 —— 只有检查更新时会向 GitHub Pages
+请求一次静态的版本清单（`docs/version.json`）。
 
 项目官网（GitHub Pages）：<https://os233.github.io/WaterReminder/>
 
@@ -39,19 +40,21 @@ Kotlin + Jetpack Compose 编写，无广告、无账号、无联网上传（只�
 - 长按删除单条记录，或一键清空当日记录
 
 **更新**
-- 启动时自动检查 GitHub Releases，有新版本时弹窗提示，确认后下载 APK 并校验 SHA-256 再安装
+- 启动时检查版本清单，有新版本时弹窗提示，确认后下载 APK 并校验 SHA-256 再安装
 - 自动检查最多每 12 小时一次；首页底部的「关于」里可以手动检查
+  （手动检查忽略节流，并区分「已是最新」与「没查到」）
 
 ## 下载
 
 官网：<https://os233.github.io/WaterReminder/>（首页 / 下载 / 使用文档 / 更新日志 / 隐私政策）
 
-最新版本从 [GitHub Releases](https://github.com/os233/WaterReminder/releases) 获取：
+最新版本从 [GitHub Releases](https://github.com/os233/WaterReminder/releases) 获取。
+版本信息有两个数据源，分工固定：
 
-- App 启动时直接读 GitHub Releases API 判断有没有新版本，不经过 GitHub Pages（1.5.0 起；
-  更早的已安装版本仍读 Pages 上的 `docs/version.json`，所以那个文件暂时不能删，见下）
-- 官网的下载链接与更新日志同样现读 Releases API，Release 一发布页面内容就跟着变；
-  配额耗尽等失败情况会退到同域的 `docs/version.json`（见下）
+- **App 内更新**读 `docs/version.json` —— Pages 上的静态发布 Manifest：用 `versionCode` 比大小，
+  取 `apkUrl` 下载，按 `sha256` 校验。**不经过 Releases API**（原因见「应用内更新怎么工作」）
+- **官网**的版本号与更新日志默认现读 Releases API，Release 一发布页面内容就跟着变；
+  配额耗尽等失败情况会退到同域的 `docs/version.json` 兜底
 
 ## 使用说明
 
@@ -193,8 +196,9 @@ Release 已经建好、Manifest 却没更新 —— 所有客户端永远收不�
 
 App 读 `https://os233.github.io/WaterReminder/version.json` —— Pages 上的静态发布 Manifest：
 
-- **版本比较用 `versionCode`**，与装机版本的 `PackageInfo.versionCode` 直接比大小。
-  符合 Android 的版本模型，也不依赖 `versionName` 的数字段恰好有序
+- **版本比较用 `versionCode`**，与装机版本的 `PackageInfo.longVersionCode` 直接比大小
+  （API 28 以下回退到 `versionCode`）。符合 Android 的版本模型，也不依赖 `versionName`
+  的数字段恰好有序
 - 下载完成后算安装包的 SHA-256 与 `sha256` 字段比对，不一致就删掉重来，不交给安装器
 - 自动检查最多每 12 小时一次；手动检查忽略节流，并明确区分「已是最新」和「没查到」
 - 任何失败（断网、HTTP 错误、字段缺失或非法）都只当作「没有更新」，不影响使用
@@ -227,7 +231,7 @@ App 读 `https://os233.github.io/WaterReminder/version.json` —— Pages 上的
 | `versionCode` | CI | 机器比较依据，必须与 `build.gradle.kts` 一致 |
 | `versionName` | CI | 给人看的版本号 |
 | `apkUrl` | CI | 指向 Release asset，必须是 https |
-| `sha256` | CI | 该 asset 的摘要；为空时 App 跳过下载后校验 |
+| `sha256` | CI | 该 asset 的摘要（64 位小写十六进制）；为空时 App 跳过下载后校验 |
 | `changelog` | **人工** | App 更新弹窗与官网兜底都读它 |
 | `forceUpdate` | 人工 | 为 `true` 时弹窗没有「稍后」按钮 |
 
@@ -237,13 +241,14 @@ App 读 `https://os233.github.io/WaterReminder/version.json` —— Pages 上的
 
 ```bash
 python scripts/sync_version.py --check    # 只校验不写文件；CI 也跑这个
-python scripts/sync_version.py --expect-tag v1.4.0    # 断言 tag 与 versionName 一致；发版工作流用
+python scripts/sync_version.py --expect-tag v<版本号>    # 断言 tag 与 versionName 一致；发版工作流用
 ```
 
 校验的不变量：
 
 - `docs/version.json` 的 versionCode **不能比源码还新**（多半是升了它却忘了升 `app/build.gradle.kts`）
-- `apkUrl` 的文件名必须与 versionName 匹配
+- `apkUrl` 必须是 https，且文件名必须与 versionName 匹配
+- `sha256` 非空时必须是 64 位小写十六进制（App 只认这个格式，写错会被当成「没有摘要」）
 - `sha256` 缺失不算失败：本地发版时它是空的，CI 在 Release 建好后写回真实值
 - `apkUrl` 指向 Releases 时脚本只给提示，**无法校验 asset 是否已上传** —— 不过发版流程里
   这一步由 CI 保证（先上传 asset，再改 Manifest），不需要人工确认
@@ -300,27 +305,30 @@ release 工作流需要在仓库 Settings → Secrets and variables → Actions 
 │   ├── assets/                  # style.css + site.js
 │   └── version.json             # 发布 Manifest：App 内更新与官网都读它（机器字段由 CI 写）
 ├── app/release/                 # 本地 APK 留档（已 gitignore，不入库；分发走 GitHub Releases）
-└── app/src/main/java/com/example/waterreminder/
-    ├── MainActivity.kt              # 入口：初始化数据库、启动保活服务、NavHost、启动时检查更新
-    ├── WaterReminderApp.kt          # Application（空实现，仅在清单中声明）
-    ├── data/
-    │   ├── WaterRecord.kt           # Room 实体
-    │   ├── WaterRecordDao.kt        # 查询与统计
-    │   ├── WaterDatabase.kt         # 数据库与迁移
-    │   ├── DrinkType.kt             # 饮品类型与水合系数
-    │   ├── UserPrefs.kt             # SharedPreferences（每日目标）
-    │   └── remote/
-    │       ├── UpdateChecker.kt     # 读 Pages 的 version.json 检查更新、下载安装
-    │       └── UpdateInfo.kt        # 一次可用更新的数据（对应 version.json 的顶层字段）
-    ├── notification/
-    │   ├── AlarmManagerHelper.kt    # 闹钟调度、免打扰判断
-    │   ├── AlarmReceiver.kt         # 提醒触发
-    │   ├── BootReceiver.kt          # 开机恢复
-    │   └── KeepAliveService.kt      # 前台保活服务
-    └── ui/
-        ├── WaterReminderScreen.kt   # 首页
-        ├── HistoryScreen.kt         # 历史与统计
-        └── theme/                   # 主题配色
+└── app/src/main/
+    ├── AndroidManifest.xml      # 权限、组件声明（保活服务为 specialUse 前台服务）
+    ├── res/                     # 图标、主题、colors、file_paths.xml
+    └── java/com/example/waterreminder/
+        ├── MainActivity.kt          # 入口：通知 / 精确闹钟 / 电池优化提示、保活服务、NavHost、更新弹窗
+        ├── WaterReminderApp.kt      # Application（空实现，仅在清单中声明）
+        ├── data/
+        │   ├── WaterRecord.kt       # Room 实体
+        │   ├── WaterRecordDao.kt    # 查询与统计
+        │   ├── WaterDatabase.kt     # 数据库与迁移
+        │   ├── DrinkType.kt         # 饮品类型与水合系数
+        │   ├── UserPrefs.kt         # SharedPreferences（每日目标）
+        │   └── remote/
+        │       ├── UpdateChecker.kt # 读 Pages 的 version.json 检查更新、下载并校验 SHA-256 后安装
+        │       └── UpdateInfo.kt    # 一次可用更新的数据（对应 version.json 的顶层字段）
+        ├── notification/
+        │   ├── AlarmManagerHelper.kt # 闹钟调度、免打扰判断
+        │   ├── AlarmReceiver.kt     # 提醒触发
+        │   ├── BootReceiver.kt      # 开机恢复
+        │   └── KeepAliveService.kt  # 前台保活服务
+        └── ui/
+            ├── WaterReminderScreen.kt # 首页
+            ├── HistoryScreen.kt     # 历史与统计
+            └── theme/               # 主题配色
 ```
 
 ### 数据模型
@@ -346,7 +354,7 @@ data class WaterRecord(
 - Kotlin 2.0.21 + Jetpack Compose（Compose BOM 2024.09.03）+ Material 3
 - Room 2.6.1（KSP 注解处理）
 - Navigation Compose 2.8.4
-- OkHttp 4.12.0 + Gson 2.10.1
+- OkHttp 4.12.0 + Gson 2.10.1（Gson 只取 `JsonParser` 逐字段校验，不做对象反序列化）
 - minSdk 26 / targetSdk 36 / compileSdk 36
 
 ## 注意事项
@@ -360,6 +368,9 @@ data class WaterRecord(
 - 部分国产 ROM 需要手动允许自启动与后台运行，否则提醒会被杀掉
 - APK 不再入库，改由 GitHub Release asset 分发（`.github/workflows/release.yml`）；
   `app/release/` 只作本地留档并已加入 `.gitignore`。迁移前 Pages 上的旧直链（`app/release/*.apk`）会随之失效
+- 仓库没有测试套件，**应用内更新的「下载 → 校验 → 安装」只能装到设备上手动验证**。
+  检查 `shared_prefs/update_prefs.xml` 里出现 `last_check_at` 只能证明请求到了 Manifest，
+  不证明版本比较与摘要校验逻辑对
 - 仓库 Settings → Pages 的源必须是 `master` 分支的 `/docs` 目录 —— 官网在 `docs/`，
   `docs/version.json` 也靠这个映射，才在 App 与官网读的那个 URL 上可达
 
