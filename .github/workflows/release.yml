@@ -16,7 +16,9 @@ name: Release
 #   打 tag 即发版：git push origin v<版本号>（tag 指向 versionName 一致的提交）
 #   手动触发保留：Actions → Release → Run workflow 填 tag，用于失败重跑（会覆盖已有 asset）
 #
-# 只对正式版本 tag（v1.2.3 形态）触发；v1.3.0-beta.1 这类预发布 tag 不会走这里。
+# 触发范围是 `v<数字>.<数字>.<数字>` 形态的 tag。注意 glob 的 `*` 会吃掉后缀，
+# 所以 `v1.3.0-beta.1` 这类预发布 tag **也会**触发 —— 但它会在「校验 tag 与 versionName 一致」
+# 那步失败退出，不会真的发版。要彻底排除预发布得再加一条 `!v*-*`（本仓库未实测过）。
 
 on:
   push:
