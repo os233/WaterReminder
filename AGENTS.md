@@ -40,12 +40,12 @@
 - `versionCode` 严格递增(脚本只能防版本文件回退,跨版本递增由发版人保证)。
   `docs/version.json` 的 `versionCode`/`versionName`/`apkUrl` 由 `scripts/sync_version.py`
   同步,不要手改这三项绕过校验;`changelog` 仍要手写,脚本不动它。
-  这个文件只是给 1.5.0 之前的老客户端过渡用,不是应用内更新的来源 ——
-  更新信息一律以 GitHub Release 为准。
+  这个文件有**两个用途,都不能删**(见「发布链路」);新版本的应用内更新不走它,
+  一律以 GitHub Release 为准。
 - Release 缺 `keystore.properties` 时在 `packageRelease` 阶段失败是
   **刻意设计**(避免产出装不上的未签名 APK),不要"修复"它。
 - `scripts/release.sh` 不自动 commit/push 也是**刻意设计**;未经用户明确
-  确认,代理不得 push 或发版。**推 `v*.*.*` tag 即发版**:release 工作流会自动
+  确认,代理不得 push 或发版。**推形如 `v1.4.0` 的 tag 即发版**:release 工作流会自动
   构建签名 APK、发布 Release;推 `master` 则上线 Pages 官网(`docs/`)。
   两者都是对外动作,须分别确认,顺序见 README「发布流程」。
 - 换行符以 `.gitattributes` 为准:文本一律 LF 入库,`*.bat` 为 CRLF;
@@ -57,15 +57,19 @@
   asset,除发版流程外不要动。该目录只有本地跑过发版脚本才存在,别假设磁盘上
   有上一版 APK 可供比对 —— 校验线上包见「发布链路」。
 - `docs/` 是 GitHub Pages 的站点根,只放静态文件,不要引入构建步骤;
-  页面里的版本信息、更新日志一律现读 GitHub Releases API,不要另存一份。
+  页面里的版本信息、更新日志优先现读 GitHub Releases API(未认证配额按出口 IP
+  共享,容易被用光),失败时首页与下载页退到同域的 `docs/version.json` 兜底;
+  除 `version.json` 外不要再另存版本清单。
 
 ## 发布链路
 
 版本信息的唯一来源是 **GitHub Release**,不是仓库里的任何文件。
 
-- 推 `v*.*.*` tag → `release.yml` 构建签名 APK → 创建 Release 并上传 asset →
-  核对 asset 的 SHA-256。应用内更新(读 `/releases/latest`)与官网 `docs/`
-  (前端现读 Releases API)都以它为准,没有需要单独维护的版本清单。
+- 推形如 `v1.4.0` 的 tag → `release.yml` 构建签名 APK → 创建 Release 并上传 asset →
+  核对 asset 的 SHA-256。预发布 tag(如 `v1.3.0-beta.1`)也会触发(glob 的 `*` 会吃掉
+  后缀),但会在「校验 tag 与 versionName 一致」那步失败退出,不会真的发版。
+  应用内更新(读 `/releases/latest`)与官网 `docs/`(前端现读 Releases API)都以它为准,
+  没有需要单独维护的版本清单。
 - `docs/version.json` 有**两个用途,都不能删**:①服务还在跑 1.5.0 之前的老客户端
   (它们仍请求 Pages 上的老 URL);②**官网的静态兜底数据源** —— 未认证的 Releases API
   只有 60 次/小时且配额按出口 IP 共享,共用网络下会被别人的请求用光,`site.js` 失败时
