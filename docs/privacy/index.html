@@ -52,7 +52,7 @@
   <p>应用不集成任何第三方 SDK，不含广告 SDK、崩溃上报 SDK、推送 SDK 或统计分析 SDK。</p>
 
   <h2>5. 网络请求说明</h2>
-  <p>应用唯一的网络行为是<strong>检查版本更新</strong>：启动时向 GitHub 的公开 API 请求最新发布版本（<code>https://api.github.com/repos/os233/WaterReminder/releases/latest</code>），有新版本时从 GitHub Releases 下载安装包。</p>
+  <p>应用唯一的网络行为是<strong>检查版本更新</strong>：启动时读取本站在 GitHub Pages 上托管的静态版本清单（<code>https://os233.github.io/WaterReminder/version.json</code>），有新版本时从 GitHub Releases 下载安装包。</p>
   <ul>
     <li>该请求只读取公开的版本信息，不携带任何用户数据</li>
     <li>与任何网络请求一样，GitHub 作为服务方会看到发起请求的 IP 地址与 User-Agent，这属于其自身的隐私政策管辖范围</li>
