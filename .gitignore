@@ -33,3 +33,5 @@ keystore.properties
 # APK 走 GitHub Releases 分发（.github/workflows/release.yml），不再随仓库增长。
 # 本目录只剩本地留档作用（release.sh 会把产物复制到这里），CI 上不存在。
 /app/release/
+# 兜底：APK 一律不入库（曾有 3 个误入库进了历史），别只靠上面的目录规则
+*.apk
