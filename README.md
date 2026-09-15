@@ -220,7 +220,11 @@ Pages 只做展示，App 的更新检查完全不经过它。
 | 工作流 | 触发 | 做什么 |
 | --- | --- | --- |
 | `.github/workflows/ci.yml` | push 到 master / 任何 PR / 手动 | 版本号校验 + `assembleDebug`（lint 目前只报告不拦截）。不需要任何密钥，fork 的 PR 也能安全跑 |
-| `.github/workflows/release.yml` | push `v*.*.*` tag 自动发版（预发布 tag 如 `v1.3.0-beta.1` 不触发）；手动触发保留，用于失败重跑（会覆盖已有 asset） | 校验 tag 与 versionName 一致 → 构建签名 APK → 校验签名 → 创建 Release 并上传 asset → 核对 asset 的 SHA-256 与本地产物一致 |
+| `.github/workflows/release.yml` | push 形如 `v1.4.0` 的 tag 自动发版；手动触发保留，用于失败重跑（会覆盖已有 asset） | 校验 tag 与 versionName 一致 → 构建签名 APK → 校验签名 → 创建 Release 并上传 asset → 核对 asset 的 SHA-256 与本地产物一致 |
+
+tag 过滤器是 `v[0-9]*.[0-9]*.[0-9]*`。glob 的 `*` 会吃掉后缀，所以预发布 tag
+（如 `v1.3.0-beta.1`）**也会触发** —— 它会在「校验 tag 与 versionName 一致」那步失败退出，
+不会真的发版。要彻底排除预发布得再加一条 `!v*-*`，本仓库未实测。
 
 release 工作流需要在仓库 Settings → Secrets and variables → Actions 配好
 `KEYSTORE_BASE64`（`base64 -w0 water_keystore.jks`）、`STORE_PASSWORD`、`KEY_ALIAS`、`KEY_PASSWORD`；
