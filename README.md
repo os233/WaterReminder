@@ -36,7 +36,7 @@ Kotlin + Jetpack Compose 编写，无广告、无账号、无联网上传（只�
 **历史**
 - 最近 7 天汇总：达标天数、日均饮水量
 - 月历视图，按日查看当天记录
-- 支持多选删除
+- 长按删除单条记录，或一键清空当日记录
 
 **更新**
 - 启动时自动检查 GitHub Releases，有新版本时弹窗提示，确认后下载 APK 并校验 SHA-256 再安装
@@ -44,11 +44,12 @@ Kotlin + Jetpack Compose 编写，无广告、无账号、无联网上传（只�
 
 ## 下载
 
-官网：<https://os233.github.io/WaterReminder/>（首页 / 下载 / 文档 / 更新日志 / 隐私政策）
+官网：<https://os233.github.io/WaterReminder/>（首页 / 下载 / 使用文档 / 更新日志 / 隐私政策）
 
 最新版本从 [GitHub Releases](https://github.com/os233/WaterReminder/releases) 获取：
 
-- App 启动时直接读 GitHub Releases API 判断有没有新版本，不经过 GitHub Pages
+- App 启动时直接读 GitHub Releases API 判断有没有新版本，不经过 GitHub Pages（1.5.0 起；
+  更早的已安装版本仍读 Pages 上的 `docs/version.json`，所以那个文件暂时不能删，见下）
 - 官网的下载链接与更新日志同样现读 Releases API，Release 一发布页面内容就跟着变；
   配额耗尽等失败情况会退到同域的 `docs/version.json`（见下）
 
@@ -65,17 +66,17 @@ Kotlin + Jetpack Compose 编写，无广告、无账号、无联网上传（只�
 - **记录**：首页点饮品按钮记一杯，或通过「自定义」输入任意毫升数，按水合系数折算入当日总量
 - **目标**：点首页的目标数字修改每日目标（1000–4000 ml，步长 100）
 - **提醒**：首页进入「设置提醒」，选 1 / 2 / 3 小时间隔；可开启夜间免打扰并设起止时间（支持跨午夜）
-- **历史**：从首页进入历史页，查看最近 7 天汇总与月历，支持多选删除
+- **历史**：从首页进入历史页，查看最近 7 天汇总与月历；长按删除单条记录，或一键清空当日记录
 - **更新**：启动时自动检查，有新版本时在弹窗里点「立即更新」即可（自动检查最多每 12 小时一次）
 
 ## 环境要求
 
 | 项 | 版本 |
 | --- | --- |
-| JDK | 17 或更高（21 亦可；**不要用 24+**，Gradle 8.11.1 只支持到 Java 23） |
-| Android SDK | compileSdk 36 对应的 platform |
+| JDK | 17 或 21（Gradle 8.11.1 只支持到 Java 23，**24+ 不可用**；CI 固定 17） |
+| Android SDK | platform `android-36`（CI 另装 `build-tools;36.0.0`） |
 | Gradle | 8.11.1（wrapper 已内置，无需手动装） |
-| AGP / Kotlin | 8.10.1 / 2.0.21 |
+| AGP / Kotlin / KSP | 8.10.1 / 2.0.21 / 2.0.21-1.0.28 |
 | Python | 3.9+（只有 `scripts/` 下的发版脚本用，不参与构建） |
 
 ## 依赖安装
@@ -124,20 +125,26 @@ cp keystore.properties.example keystore.properties
 
 ## 发布流程
 
-版本号的权威来源只有 `app/build.gradle.kts` 一处；Release 由 tag 触发 CI 自动创建，
-应用内更新和官网都直接读这个 Release，没有需要单独维护的版本清单。
+`app/build.gradle.kts` 里的 `versionCode` / `versionName` 是版本号的唯一来源；版本信息
+（版本号、更新说明、APK 下载地址与 SHA-256）的唯一来源是 GitHub Release —— 它由 tag 触发
+CI 自动创建，应用内更新和官网都直接读它，没有需要单独维护的版本清单
+（`docs/version.json` 只作过渡与兜底，见下）。
 
 ```bash
 # 1. 改 app/build.gradle.kts 里的 versionCode 与 versionName（versionCode 必须严格递增）
 # 2. 本地一键构建 → 归档 → 同步版本文件与元数据
 ./scripts/release.sh
-# 3. 打 tag 并推送 → CI 自动构建签名 APK、创建 Release 并上传 asset
+# 3. 补 docs/version.json 的 changelog（脚本不动它；老客户端与官网兜底都要读它，见下）
+# 4. 提交：版本号与版本文件必须在同一个提交里，tag 才能指向它
+git add app/build.gradle.kts docs/version.json && git commit -m "release: 发布 <版本号>"
+# 5. 打 tag 并推送 → CI 自动构建签名 APK、创建 Release 并上传 asset
 #    （tag 必须打在 versionName 一致的提交上，工作流第一步会校验）
 git tag v<版本号> && git push origin v<版本号>
-# 4. 等 CI 跑完，在 Release 页面把发布说明写成「新增 / 优化 / 修复」分段
+# 6. 等 CI 跑完，在 Release 页面把发布说明写成「新增 / 优化 / 修复」分段
 #    App 的更新弹窗与官网更新日志都直接读它
-# 5. 补 docs/version.json 的 changelog（老客户端与官网兜底都要读它，见下），然后提交并推 master
-git add -A && git commit -m "release: 发布 <版本号>" && git push origin master
+# 7. 确认 Release 里已有对应的 APK asset（version.json 的兜底 apkUrl 指向它，缺了老客户端就是 404），
+#    再推 master 上线官网
+git push origin master
 ```
 
 `scripts/release.sh` 依次做：校验 `keystore.properties` 存在 → `./gradlew assembleRelease` →
@@ -228,12 +235,15 @@ tag 过滤器是 `v[0-9]*.[0-9]*.[0-9]*`。glob 的 `*` 会吃掉后缀，所以
 
 release 工作流需要在仓库 Settings → Secrets and variables → Actions 配好
 `KEYSTORE_BASE64`（`base64 -w0 water_keystore.jks`）、`STORE_PASSWORD`、`KEY_ALIAS`、`KEY_PASSWORD`；
-没配的话它会在第一步明确报错退出，不会静默产出未签名包。
+缺 `KEYSTORE_BASE64` 时它会在「还原签名配置」那一步明确报错退出，不会静默产出未签名包。
 
 ## 项目结构
 
 ```
+├── AGENTS.md                    # 在本仓库工作的 AI 代理必须遵守的约束（边界、发版规则、环境版本）
 ├── .github/workflows/           # CI：ci.yml（版本号校验 + 编译）、release.yml（构建签名 APK 发到 Releases）
+├── build.gradle.kts             # AGP / Kotlin / KSP 插件版本；app/build.gradle.kts 里是版本号与依赖
+├── gradle/ · gradlew            # Gradle wrapper（8.11.1，只走 wrapper）
 ├── scripts/
 │   ├── release.sh               # 一键发版：构建 → 归档 → 同步版本号
 │   └── sync_version.py          # 同步 / 校验版本文件与源码版本号
@@ -272,11 +282,14 @@ release 工作流需要在仓库 Settings → Secrets and variables → Actions 
 ```kotlin
 @Entity(tableName = "water_records")
 data class WaterRecord(
-    val id: Int,
-    val amount: Int,               // 实际饮用毫升数
-    val timestamp: LocalDateTime,
-    val drinkType: String,         // 饮品类型 id
-    val hydration: Double          // 该次饮水的水合系数
+    @PrimaryKey(autoGenerate = true)
+    val id: Int = 0,
+    val amount: Int,                                  // 实际饮用毫升数
+    val timestamp: LocalDateTime = LocalDateTime.now(),
+    @ColumnInfo(defaultValue = "water")
+    val drinkType: String = DrinkType.WATER.id,       // 饮品类型 id
+    @ColumnInfo(defaultValue = "1.0")
+    val hydration: Double = 1.0                       // 该次饮水的水合系数
 )
 ```
 
