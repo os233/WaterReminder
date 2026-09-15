@@ -269,7 +269,8 @@ fun UpdateDialog(
                                 .padding(14.dp)
                                 .verticalScroll(rememberScrollState())
                         ) {
-                            // changelog 直接来自 Release Notes，是 Markdown：`## 分类` 当小标题，其余当条目
+                            // changelog 来自 docs/version.json 的 changelog 字段（人工手写），按轻 Markdown 渲染：
+                            // `#` 开头的行当小标题，其余行当条目
                             info.changelog.split("\n")
                                 .map { it.trim() }
                                 .filter { it.isNotEmpty() }

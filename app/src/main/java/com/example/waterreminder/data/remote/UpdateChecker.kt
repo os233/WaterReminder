@@ -42,8 +42,8 @@ sealed interface UpdateCheckResult {
  * 为什么不用 API：
  *  - 未认证的 API 只有 60 次/小时，且配额**按出口 IP 共享**，公司 / 校园网 / 运营商 NAT
  *    下很容易被别人的请求用光，拿到 403 之后更新检查就静默失败了；
- *  - API 的 `body` 是 Release Notes，本仓库实际是 `--generate-notes` 生成的
- *    "Full Changelog: <链接>"，对用户没有意义；`version.json` 里的 changelog 才是手写的中文；
+ *  - Release 的说明就是 `version.json` 里的 changelog（CI 建 Release 时灌进去的），
+ *    绕道 API 拿不到任何 `version.json` 里没有的东西，还要多吃一次配额；
  *  - 静态文件在 CDN 上，没有配额，App 也不必猜 API 的响应结构。
  *
  * 解析对每个字段都显式校验，缺失或非法一律返回 [UpdateCheckResult.Failed] —— 不用 Gson
