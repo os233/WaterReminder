@@ -25,8 +25,11 @@ android {
         applicationId = "com.example.waterreminder"
         minSdk = 26
         targetSdk = 36
+        // 预发布：versionName 带 `-<后缀>`，tag 即 `v0.0.1-beta.1`（--expect-tag 要求两者严格相等）。
+        // 预发布与它对应的正式版共用同一个 versionCode —— 它不写回 docs/version.json，
+        // 客户端感知不到，所以不算破坏「严格递增」（见 AGENTS.md）。
         versionCode = 1
-        versionName = "0.0.1"
+        versionName = "0.0.1-beta.1"
     }
 
     signingConfigs {
