@@ -210,6 +210,8 @@ pre code { background: none; padding: 0; }
   border-radius: 999px;
   padding: 1px 9px;
 }
+/* 「本站清单」：标明这条不是来自 GitHub API，而是 version.json 的兜底 */
+.release .tag-chip.static-chip { color: var(--muted); }
 .notes { margin-top: 10px; font-size: 15px; }
 .notes h4 { font-size: 15px; margin: 16px 0 6px; }
 .notes ul { margin: 0 0 10px; }

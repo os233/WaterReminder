@@ -206,6 +206,67 @@
       .catch(loadLatestFromStatic);
   }
 
+  /* 单条更新日志的卡片。API 与 version.json 兜底共用同一套结构，
+     免得两个数据源渲染出不一样的版式。 */
+  function releaseCard(o) {
+    return '' +
+      '<article class="release">' +
+        '<header>' +
+          '<h3>' + escapeHtml(o.version) + '</h3>' +
+          (o.date ? '<time>' + escapeHtml(o.date) + '</time>' : '') +
+          (o.prerelease ? '<span class="tag-chip">预发布</span>' : '') +
+          (o.static ? '<span class="tag-chip static-chip">本站清单</span>' : '') +
+        '</header>' +
+        '<div class="notes">' + (renderNotes(o.notes) || '<p class="muted">这个版本没有写更新说明。</p>') + '</div>' +
+        (o.apkUrl
+          ? '<p class="small"><a href="' + escapeHtml(o.apkUrl) + '">下载 ' + escapeHtml(o.apkName || 'APK') + '</a></p>'
+          : '') +
+      '</article>';
+  }
+
+  /*
+   * 更新日志页的兜底：API 取不到时读同域的 version.json。
+   *
+   * 首页与下载页一直有这条退路，更新日志页原本没有 —— 同一个站点在限流时会
+   * 自相矛盾：旁边两页照样显示版本号，更新日志页却只剩一句「暂时取不到」，
+   * 看起来就像「没有发布过任何版本」。API 返回空列表时同样走这里：那多半是
+   * Release 被删掉了，而版本清单里还有东西，比直接写「还没有发布过版本」诚实。
+   *
+   * 代价：version.json 只有一条记录，所以这里只能显示最新正式版，不是完整历史。
+   */
+  function loadChangelogFromStatic() {
+    var host = document.querySelector('[data-changelog]');
+    if (!host) return;
+
+    if (!VERSION_JSON) {
+      showFailure('[data-changelog]', '暂时取不到更新日志，可以直接去 GitHub Releases 查看。');
+      return;
+    }
+
+    fetch(VERSION_JSON)
+      .then(function (res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.json();
+      })
+      .then(function (v) {
+        if (!v || !v.versionName) throw new Error('version.json 结构不符');
+        var apkUrl = v.apkUrl || '';
+        host.innerHTML =
+          releaseCard({
+            version: 'v' + cleanVersion(v.versionName),
+            notes: v.changelog,
+            apkUrl: apkUrl,
+            apkName: apkUrl ? decodeURIComponent(apkUrl.split('/').pop().split('?')[0]) : '',
+            static: true
+          }) +
+          '<p class="notice">GitHub 接口暂时不可用，上面这条来自本站的版本清单，只含最新正式版；' +
+          '完整历史请到 <a href="' + RELEASES_PAGE + '">GitHub Releases</a> 查看。</p>';
+      })
+      .catch(function () {
+        showFailure('[data-changelog]', '暂时取不到更新日志，可以直接去 GitHub Releases 查看。');
+      });
+  }
+
   function loadChangelog() {
     var host = document.querySelector('[data-changelog]');
     if (!host) return;
@@ -213,30 +274,21 @@
     apiGet('/releases?per_page=20')
       .then(function (releases) {
         var published = (releases || []).filter(function (r) { return !r.draft; });
-        if (!published.length) {
-          host.innerHTML = '<p class="notice">还没有发布过版本。</p>';
-          return;
-        }
+        if (!published.length) return loadChangelogFromStatic();
+
         host.innerHTML = published.map(function (release) {
-          var version = cleanVersion(release.tag_name);
           var apk = findApk(release);
-          return '' +
-            '<article class="release">' +
-              '<header>' +
-                '<h3>' + escapeHtml('v' + version) + '</h3>' +
-                '<time>' + escapeHtml(formatDate(release.published_at)) + '</time>' +
-                (release.prerelease ? '<span class="tag-chip">预发布</span>' : '') +
-              '</header>' +
-              '<div class="notes">' + (renderNotes(release.body) || '<p class="muted">这个版本没有写更新说明。</p>') + '</div>' +
-              (apk
-                ? '<p class="small"><a href="' + escapeHtml(apk.browser_download_url) + '">下载 ' + escapeHtml(apk.name) + '</a></p>'
-                : '') +
-            '</article>';
+          return releaseCard({
+            version: 'v' + cleanVersion(release.tag_name),
+            date: formatDate(release.published_at),
+            prerelease: !!release.prerelease,
+            notes: release.body,
+            apkUrl: apk ? apk.browser_download_url : '',
+            apkName: apk ? apk.name : ''
+          });
         }).join('');
       })
-      .catch(function () {
-        showFailure('[data-changelog]', '暂时取不到更新日志，可以直接去 GitHub Releases 查看。');
-      });
+      .catch(loadChangelogFromStatic);
   }
 
   document.addEventListener('DOMContentLoaded', function () {

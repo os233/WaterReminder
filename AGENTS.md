@@ -152,8 +152,10 @@ App 内更新是本项目唯一在运行时依赖外部的链路，**改坏了�
 
 - 推形如 `v1.4.0` 的 tag → `release.yml` 构建签名 APK → 创建 Release 并上传 asset →
   核对 asset 的 SHA-256 → **把 `versionCode` / `versionName` / `apkUrl` / `sha256`
-  写回 `docs/version.json` 并推 master**。预发布 tag（如 `v1.5.0-beta.1`）被 `!v*-*`
-  挡掉，不会触发 workflow。
+  写回 `docs/version.json` 并推 master**。预发布 tag（如 `v1.5.0-beta.1`）**同样会触发**
+  这个 workflow，区别只是建 prerelease 且不写回 Manifest —— 不要以为它被过滤器挡掉了。
+  `on.push.tags` 的两条 glob 里，`v[0-9]*.[0-9]*.[0-9]*` 由于 `*` 是通配符而不是量词，
+  本身就已经匹配 `v0.0.1-beta.1`；第二条只是把这个意图显式写出来，不是冗余。
 - **顺序**：先推 `master`，再推 tag —— tag 要打在已经推到 master 的提交上。CI 的写回步骤
   会先 `git fetch` + `git rebase origin/master` 再推，所以构建那几分钟里 master 又被推了
   提交（发版后补文档很常见）也不会丢写回；不加这两步的话推送会被拒，结果是 Release 已建好、

@@ -54,7 +54,9 @@ Kotlin + Jetpack Compose 编写，无广告、无账号、无联网上传 ——
 - **App 内更新**读 `docs/version.json` —— Pages 上的静态发布 Manifest：用 `versionCode` 比大小，
   取 `apkUrl` 下载，按 `sha256` 校验。**不经过 Releases API**（原因见「应用内更新怎么工作」）
 - **官网**的版本号与更新日志默认现读 Releases API，Release 一发布页面内容就跟着变；
-  配额耗尽等失败情况会退到同域的 `docs/version.json` 兜底
+  配额耗尽等失败情况会退到同域的 `docs/version.json` 兜底 —— 首页与下载页拿到版本号、
+  下载直链与摘要，更新日志页拿到一条带「本站清单」标签的最新正式版记录
+  （`version.json` 只有一条，完整历史仍需要 API）
 
 ## 使用说明
 
@@ -250,7 +252,8 @@ App 读 `https://os233.github.io/WaterReminder/version.json` —— Pages 上的
 **② 官网的静态兜底数据源。** 官网默认读 GitHub Releases API，但未认证的 API 只有
 **60 次/小时，而且配额按出口 IP 共享** —— 共用出口很容易被别人的请求用光，访客就会看到
 「获取失败」。所以 API 失败时 `site.js` 会退回来读同域的 `version.json`
-（同域、无配额、永远可达）。因此 **`changelog` 要认真写** —— API 失败时官网直接拿它当更新说明显示。
+（同域、无配额、永远可达），三个页面都如此。因此 **`changelog` 要认真写** ——
+API 失败时官网直接拿它当更新说明显示。
 
 字段与维护者：
 
@@ -292,13 +295,18 @@ Pages 源为 `master` 分支的 `/docs` 目录，站点就是 `docs/` 下的静�
 | `/` | 首页：功能、水合系数、最新版本 |
 | `/download/` | 下载页：最新版本、APK 直链、SHA-256 |
 | `/docs/` | 使用文档与常见问题 |
-| `/changelog/` | 更新日志，前端直接读 GitHub Releases API |
+| `/changelog/` | 更新日志，前端读 GitHub Releases API，失败时退到 `version.json` 里的最新正式版 |
 | `/privacy/` | 隐私政策 |
 
 `docs/assets/site.js` 在浏览器里请求 GitHub 的公开 API，所以版本信息与更新日志都不需要手工同步 ——
 Release 一发布，页面内容就跟着变。但未认证的 API 只有 60 次/小时，且配额**按出口 IP 共享**
-（公司、校园网、运营商 NAT 下很容易被别人的请求用光），所以首页与下载页在 API 失败时
-会**退回来读同域的 `version.json`**；更新日志页没有兜底源，失败时显示提示 + Releases 链接。
+（公司、校园网、运营商 NAT 下很容易被别人的请求用光），所以**三个页面在 API 失败时都会
+退回来读同域的 `version.json`**：首页与下载页拿到版本号、下载直链与 SHA-256，更新日志页拿到
+一条标着「本站清单」的最新正式版记录。`version.json` 只有一条记录，所以那条兜底不是完整历史 ——
+它只是保证「API 挂掉时页面不会空着、也不会和首页显示的版本号自相矛盾」。
+
+API 返回**空列表**时更新日志页也走这条退路：那多半是 Release 被删了而 Manifest 还在，
+这时写「还没有发布过版本」会和首页显示的版本号直接冲突。
 Pages 不只是展示 —— **App 的更新检查也读它**（`/version.json`），见「应用内更新怎么工作」。
 
 ### CI
@@ -311,6 +319,11 @@ Pages 不只是展示 —— **App 的更新检查也读它**（`/version.json`�
 tag 过滤器是两条 glob：`v[0-9]*.[0-9]*.[0-9]*`（正式）与 `v[0-9]*.[0-9]*.[0-9]*-*`（预发布）。
 两条都显式列出 —— 图省事写成 `v*` 的话，`vfoo` 这类无关 tag 也会拉起一次 workflow，
 虽然会在「校验 tag 与 versionName 一致」那步失败，但白占一次 runner。
+
+⚠️ **第一条其实就已经匹配预发布 tag**：glob 里的 `*` 是通配符而不是量词，所以
+`v[0-9]*.[0-9]*.[0-9]*` 的末尾那个 `*` 会吃掉 `-beta.1`，`v0.0.1-beta.1` 照样命中。
+第二条只是把这个意图显式写出来，**不是冗余，别删**。历史上这里曾经是一条 `!v*-*` 排除项，
+那正是「推 beta tag 什么都不发生」的原因。
 
 **预发布**（tag 形如 `v0.0.1-beta.1`）与正式发版的差别只有两处，其余步骤完全一致：
 
@@ -345,7 +358,7 @@ release 工作流需要在仓库 Settings → Secrets and variables → Actions 
 │   └── sync_version.py          # 同步 / 校验版本文件与源码版本号（CI 用它写回 Manifest）
 ├── docs/                        # GitHub Pages 官网（Pages 源就是这个目录）
 │   ├── index.html               # 首页
-│   ├── download/ changelog/     # 下载页、更新日志（前端现读 Releases API）
+│   ├── download/ changelog/     # 下载页、更新日志（前端现读 Releases API，失败退到 version.json）
 │   ├── docs/ privacy/           # 使用文档、隐私政策
 │   ├── assets/                  # style.css + site.js
 │   └── version.json             # 发布 Manifest：App 内更新与官网都读它（机器字段由 CI 写）
