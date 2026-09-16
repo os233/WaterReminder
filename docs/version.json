@@ -3,6 +3,6 @@
   "versionName": "0.0.1",
   "apkUrl": "https://github.com/os233/WaterReminder/releases/download/v0.0.1/WaterReminder_v0.0.1_release.apk",
   "sha256": "99d0818cad7af54af50bb3c1bac4c3e0d482200a9d3b236e24cb5c26a427fc13",
-  "changelog": "版本号从 0.0.1 重新起算。\n1. 历史页日历支持上滑整块收起，展开时内容不再被裁切，整页可滚动\n2. 详细记录标题与列表并入同一张卡片，滚动到底时保留与手势条的间距\n3. 矮视口下收紧主界面尺寸，小屏一屏可见快速记录",
+  "changelog": "首个正式发布版本（版本号自 0.0.1 重新起算）。\n1. 历史页日历支持上滑整块收起，展开时内容不再被裁切，整页可滚动\n2. 详细记录标题与列表并入同一张卡片，滚动到底时保留与手势条的间距\n3. 矮视口下收紧主界面尺寸，小屏一屏可见快速记录",
   "forceUpdate": false
 }
