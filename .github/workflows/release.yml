@@ -1,7 +1,7 @@
 name: Release
 
 # 打 tag 即发版：构建签名 release APK，创建 GitHub Release 并把 APK 作为 asset 上传，
-# 最后把版本信息写回 docs/version.json 并推 master。
+# 正式 tag 还会把版本信息写回 docs/version.json 并推 master（预发布 tag 不写，见下）。
 #
 # 分发链路（谁是权威、谁读谁）：
 #   GitHub Release     发布平台 —— APK asset、tag、Release Notes（给人看）
@@ -22,18 +22,29 @@ name: Release
 #
 # 用法（先在 Settings → Secrets 配好签名信息）：
 #   打 tag 即发版：git push origin v<版本号>（tag 指向 versionName 一致的提交）
+#   预发布同理：  git push origin v<版本号>-<后缀>（如 v0.0.1-beta.1）
 #   手动触发保留：Actions → Release → Run workflow 填 tag，用于失败重跑（会覆盖已有 asset）
 #
-# 触发范围是 `v<数字>.<数字>.<数字>` 形态的 tag，并显式排除预发布。
-# 注意 glob 的 `*` 会吃掉后缀 —— 只写 'v[0-9]*.[0-9]*.[0-9]*' 的话 `v1.5.0-beta.1`
-# 也会匹配进来，所以下面加一条 `!v*-*` 把它挡在门外。
-# 本仓库没有 beta 发布流程：预发布 tag 应该什么都不做，而不是「跑起来再失败」。
+# 触发范围：正式 tag（如 `v0.0.2`）与预发布 tag（如 `v0.0.1-beta.1`）都会发版。
+# 两者的差别只有两处 —— Release 的 prerelease 标记，以及是否写回 docs/version.json：
+#
+#   正式 tag   → 建普通 Release → 写回 Manifest → 所有客户端收到这一版
+#   预发布 tag → 建 prerelease  → **不动 Manifest** → 只有主动下载的人拿得到
+#
+# ⚠️ 预发布绝不能写回 Manifest：Manifest 是所有客户端（含已发布的正式版）唯一的更新源，
+#    写进去等于把 beta 推给全部用户。官网首页 / 下载页读 /releases/latest，该端点天然排除
+#    prerelease，所以 beta 不会出现在下载页；更新日志页读 /releases 列表，会带「预发布」标签。
+#
+# ⚠️ glob 语义：`[0-9]*` 是「一个数字 + 任意串」—— `*` 是通配符，不是量词。所以第一条其实
+#    **已经**会匹配 `v0.0.1-beta.1`（末尾的 `*` 吃掉了 `-beta.1`）。第二条只是把这个意图
+#    显式写出来，免得将来被当成冗余删掉。原来那条 `!v*-*` 排除项已删除 —— 它正是以前
+#    「推 beta tag 什么都不发生」的原因。
 
 on:
   push:
     tags:
       - 'v[0-9]*.[0-9]*.[0-9]*'
-      - '!v*-*'
+      - 'v[0-9]*.[0-9]*.[0-9]*-*'
   workflow_dispatch:
     inputs:
       tag:
@@ -56,6 +67,24 @@ jobs:
         env:
           TAG: ${{ inputs.tag || github.ref_name }}
         run: python3 scripts/sync_version.py --expect-tag "$TAG"
+
+      # 预发布判定：tag 带 `-` 后缀（`v0.0.1-beta.1`）即为预发布。
+      # 下游用它决定 Release 是否标 prerelease、以及是否跳过 Manifest 写回。
+      - name: 判定发布通道
+        id: channel
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          case "$TAG" in
+            *-*)
+              echo "prerelease=true" >> "$GITHUB_OUTPUT"
+              echo "预发布通道：$TAG"
+              ;;
+            *)
+              echo "prerelease=false" >> "$GITHUB_OUTPUT"
+              echo "正式通道：$TAG"
+              ;;
+          esac
 
       # README 已说明：Gradle 8.11.1 只支持到 Java 23，固定用 17
       - name: 安装 JDK 17
@@ -116,10 +145,23 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ inputs.tag || github.ref_name }}
+          PRERELEASE: ${{ steps.channel.outputs.prerelease }}
         run: |
+          # 刻意不用 `[ ... ] && FLAG=--prerelease`：run 是 `bash -e`，条件为假时
+          # 整行返回 1，会让脚本在这里直接退出。
+          PRERELEASE_FLAG=""
+          if [ "$PRERELEASE" = "true" ]; then
+            PRERELEASE_FLAG="--prerelease"
+          fi
+
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG 已存在，覆盖 asset"
             gh release upload "$TAG" app/build/outputs/apk/release/*.apk --clobber
+            # 重跑时补标记：手建过的 Release 可能没标 prerelease —— 那样它就成了
+            # /releases/latest 的候选，会把 beta 顶到官网下载页上。
+            if [ -n "$PRERELEASE_FLAG" ]; then
+              gh release edit "$TAG" --prerelease
+            fi
           else
             # Release 说明直接取 docs/version.json 的 changelog —— 那是更新说明唯一手写的地方，
             # 官网更新日志页读的就是这个 body。用 --generate-notes 的话页面上只剩
@@ -130,7 +172,7 @@ jobs:
               NOTES="（本次发版没有填写更新说明）"
             fi
             gh release create "$TAG" app/build/outputs/apk/release/*.apk \
-              --title "$TAG" --notes "$NOTES"
+              --title "$TAG" --notes "$NOTES" $PRERELEASE_FLAG
           fi
           gh release view "$TAG" --json assets --jq '.assets[].name'
 
@@ -164,6 +206,9 @@ jobs:
       # 推送目标写 HEAD:master：本步骤基于 tag 指向的提交，所以要求发版人先把 master 推上去
       # （release.sh 的提示里就是这个顺序），否则这里会因非快进被拒。
       - name: 把版本信息写回 docs/version.json
+        # 预发布直接跳过：Manifest 是所有客户端（含已发布的正式版）唯一的更新源，
+        # 写进去等于把 beta 推给全部用户。beta 只存在于 Releases 里。
+        if: steps.channel.outputs.prerelease != 'true'
         env:
           TAG: ${{ inputs.tag || github.ref_name }}
           APK_SUM: ${{ steps.apk.outputs.sum }}

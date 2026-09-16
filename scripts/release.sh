@@ -58,6 +58,8 @@ echo "产物：$APK_SRC"
 # ── 3. 归档到 app/release/ ────────────────────────────────────────
 echo
 echo "▶ 归档到 app/release/…"
+# 这个目录被 gitignore 且已从索引移除，干净仓库上并不存在 —— 不建的话 cp 会直接失败
+mkdir -p app/release
 cp -f "$APK_SRC" "app/release/$APK_NAME"
 echo "已归档：app/release/$APK_NAME"
 
@@ -120,6 +122,7 @@ echo
 echo "──────────────────────────────────────────────"
 echo "接下来还需要手工做："
 echo "  1. 手写 docs/version.json 的 changelog（App 更新弹窗与官网都读它）"
+echo "     ⚠️ 预发布（versionName 带 -beta.1 这类后缀）跳过这一步：预发布不写回 Manifest"
 echo "  2. 提交并推 master（只加这两个文件；别用 git add -A，会扫进无关残留）："
 echo "       git add app/build.gradle.kts docs/version.json"
 echo "       git commit -m 'release: 发布 <版本号>' && git push origin master"
@@ -129,6 +132,8 @@ echo "     （tag 必须打在 versionName 一致的提交上）"
 echo "  4. CI 会构建签名 APK、创建 Release、上传 asset，然后把 version.json 的"
 echo "     versionCode / versionName / apkUrl / sha256 写回并推 master"
 echo "     —— 到这一步 App 才会开始提示更新"
+echo "     预发布 tag 只建一个标着 Pre-release 的 Release，不写回 Manifest："
+echo "       老客户端与官网首页都不会看到 beta，只有主动去 GitHub 下载的人才装得到"
 echo
 echo "⚠️ 顺序不能反：先推 master，再推 tag。CI 的写回步骤基于 tag 指向的提交，"
 echo "   要求远端 master 已经是它的祖先，否则推送会被拒。"

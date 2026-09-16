@@ -192,6 +192,34 @@ Release 已经建好、Manifest 却没更新 —— 所有客户端永远收不�
 
 **务必始终使用同一个密钥库**。签名不一致会导致老用户无法覆盖安装，只能卸载重装。
 
+### 预发布一版（beta）
+
+预发布和正式发版走**同一条链路、同一个 workflow**，区别只在 tag 带后缀、以及不写 Manifest：
+
+```bash
+# 1. 改 app/build.gradle.kts：versionName 带后缀，versionCode 与对应的正式版共用
+#    versionCode = 1
+#    versionName = "0.0.1-beta.1"
+# 2. docs/version.json 一个字都不改（预发布不写回，changelog 也不必为它更新）
+# 3. 本地构建 + 校验（可选，但推荐：能在推之前就发现问题）
+./scripts/release.sh
+# 4. 推 master —— tag 必须打在已推到 master 的提交上，顺序与正式版相同
+git add app/build.gradle.kts
+git commit -m "release: 预发布 0.0.1-beta.1" && git push origin master
+# 5. 推预发布 tag
+git tag v0.0.1-beta.1 && git push origin v0.0.1-beta.1
+```
+
+CI 会构建签名 APK、建一个标着 **Pre-release** 的 Release 并上传 asset，然后**跳过** Manifest
+写回 —— 所以老客户端不会收到 beta，官网首页也不会把它当成最新版。包在
+`releases/tag/v0.0.1-beta.1`，更新日志页会带上「预发布」标签。
+
+⚠️ `versionCode` 与它对应的正式版**共用**（beta 是 1，正式 0.0.1 也是 1）—— 这是「严格递增」
+的唯一豁免，理由是 beta 不写回 Manifest、客户端感知不到它。正式版发布时再往上递增。
+
+⚠️ 预发布**不解决**「Manifest 指向的正式包不存在」这类问题：它不写回 Manifest，所以 App 内更新
+与官网下载页读到的仍是上一个正式版。要让客户端真正拿到包，必须发正式 tag。
+
 ### 应用内更新怎么工作
 
 App 读 `https://os233.github.io/WaterReminder/version.json` —— Pages 上的静态发布 Manifest：
@@ -278,11 +306,28 @@ Pages 不只是展示 —— **App 的更新检查也读它**（`/version.json`�
 | 工作流 | 触发 | 做什么 |
 | --- | --- | --- |
 | `.github/workflows/ci.yml` | push 到 master / 任何 PR / 手动 | 版本号校验 + `assembleDebug`（lint 目前只报告不拦截）。不需要任何密钥，fork 的 PR 也能安全跑 |
-| `.github/workflows/release.yml` | push 形如 `v1.4.0` 的 tag 自动发版；手动触发保留，用于失败重跑（会覆盖已有 asset） | 校验 tag 与 versionName 一致 → 构建签名 APK → 校验签名 → 创建 Release 并上传 asset → 核对 asset 的 SHA-256 与本地产物一致 → 把机器字段写回 `docs/version.json` 并推 master |
+| `.github/workflows/release.yml` | push 形如 `v1.4.0` 的正式 tag 或 `v1.4.0-beta.1` 的预发布 tag；手动触发保留，用于失败重跑（会覆盖已有 asset） | 校验 tag 与 versionName 一致 → 判定发布通道 → 构建签名 APK → 校验签名 → 创建 Release 并上传 asset（预发布标 `--prerelease`）→ 核对 asset 的 SHA-256 与本地产物一致 → 正式版把机器字段写回 `docs/version.json` 并推 master（预发布跳过这一步） |
 
-tag 过滤器是 `v[0-9]*.[0-9]*.[0-9]*` 加一条排除 `!v*-*`。注意 glob 的 `*` 会吃掉后缀 ——
-只写前一条的话预发布 tag（如 `v1.3.0-beta.1`）也会匹配进来，所以用 `!v*-*` 明确挡掉。
-本仓库没有 beta 发布流程：预发布 tag 什么都不做，而不是「跑起来再失败」。
+tag 过滤器是两条 glob：`v[0-9]*.[0-9]*.[0-9]*`（正式）与 `v[0-9]*.[0-9]*.[0-9]*-*`（预发布）。
+两条都显式列出 —— 图省事写成 `v*` 的话，`vfoo` 这类无关 tag 也会拉起一次 workflow，
+虽然会在「校验 tag 与 versionName 一致」那步失败，但白占一次 runner。
+
+**预发布**（tag 形如 `v0.0.1-beta.1`）与正式发版的差别只有两处，其余步骤完全一致：
+
+| | 正式 tag | 预发布 tag |
+| --- | --- | --- |
+| Release 标记 | 普通 Release | `--prerelease` |
+| `docs/version.json` | CI 写回 | **完全不动** |
+| 官网首页 / 下载页 | 显示这一版 | 不显示（读 `/releases/latest`，该端点排除 prerelease） |
+| 官网更新日志页 | 列出 | 列出，带「预发布」标签 |
+| App 内更新 | 会提示 | 不会提示（Manifest 没变） |
+
+⚠️ **预发布绝不能写回 Manifest**：Manifest 是所有客户端（含已发布的正式版）唯一的更新源，
+写进去等于把 beta 推给全部用户。所以预发布只存在于 Releases 里，只有主动去 GitHub 下载的人
+才装得到 —— 这也是它安全的原因。
+
+⚠️ 预发布用 `--prerelease` 而不是「建好再手改」：一旦某个 Release 没被标成 prerelease，
+它就会成为 `/releases/latest` 的候选，beta 会被顶到官网首页的下载按钮上。
 
 release 工作流需要在仓库 Settings → Secrets and variables → Actions 配好
 `KEYSTORE_BASE64`（`base64 -w0 water_keystore.jks`）、`STORE_PASSWORD`、`KEY_ALIAS`、`KEY_PASSWORD`；

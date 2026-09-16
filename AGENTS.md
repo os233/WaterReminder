@@ -94,6 +94,14 @@
   代理不得 push、不得发版。**推形如 `v1.4.0` 的 tag 即发版**（release 工作流会自动
   构建签名 APK 并创建 Release）；推 `master` 则上线 Pages 官网（`docs/`）。
   两者都是对外动作，必须分别确认，顺序见 README「发布流程」。
+- **预发布（beta）**的 tag 形如 `v<versionName>-<后缀>`（如 `v0.0.1-beta.1`），
+  `app/build.gradle.kts` 的 `versionName` 必须带同样的后缀 —— `sync_version.py --expect-tag`
+  要求两者严格相等，而 APK 文件名由 `versionName` 拼出。预发布与正式发版的差别只有两处：
+  ① Release 必须标 `--prerelease`（不标它就会成为 `/releases/latest` 的候选，
+  beta 会被顶到官网首页的下载按钮上）；② **不得写回 `docs/version.json`** ——
+  Manifest 是所有客户端（含已发布的正式版）唯一的更新源，写进去等于把 beta 推给全部用户。
+  因此预发布与它对应的正式版**共用同一个 `versionCode`**，这是「严格递增」的唯一豁免。
+  预发布也**不解决**「Manifest 指向的正式包不存在」这类问题 —— 客户端只认正式 tag。
 
 ### 更新链路
 
