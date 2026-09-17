@@ -61,6 +61,12 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.tag || github.ref }}
+          # 必须显式取 tag 对象。checkout 默认只按 SHA 取那一个提交（fetch-depth 1、
+          # fetch-tags false），容器里就**没有 annotated tag 对象** ——
+          # 「判定发布通道」里用 `git cat-file -t "$TAG"` 判断是 annotated 还是 lightweight
+          # 会一律判成后者，预发布的 Release 说明因此拿不到，静默退化成兜底文案。
+          # （2026-09-17 实测：force push 重跑一次，asset 换了、说明还是旧的。）
+          fetch-tags: true
 
       # 先校验版本号一致性，避免白跑几分钟构建
       - name: 校验 tag 与 versionName 一致
