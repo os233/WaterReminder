@@ -53,10 +53,15 @@ Kotlin + Jetpack Compose 编写，无广告、无账号、无联网上传 ——
 
 - **App 内更新**读 `docs/version.json` —— Pages 上的静态发布 Manifest：用 `versionCode` 比大小，
   取 `apkUrl` 下载，按 `sha256` 校验。**不经过 Releases API**（原因见「应用内更新怎么工作」）
-- **官网**的版本号与更新日志默认现读 Releases API，Release 一发布页面内容就跟着变；
-  配额耗尽等失败情况会退到同域的 `docs/version.json` 兜底 —— 首页与下载页拿到版本号、
-  下载直链与摘要，更新日志页拿到一条带「本站清单」标签的最新正式版记录
-  （`version.json` 只有一条，完整历史仍需要 API）
+- **官网**的版本号以 **GitHub Releases 为准**：`site.js` 拿 `version.json` 里的版本号去
+  `GET /releases/tags/v<versionName>`，**Release 与 APK asset 都真实存在**才把版本号、
+  下载直链与 SHA-256 填进首页和下载页；缺了就显示「vX.Y.Z 尚无可下载的安装包」，按钮退回
+  Releases 页面。更新日志页读 Releases 列表，API 失败或列表为空时退到同域的
+  `docs/version.json`，渲染一条带「本站清单」标签的最新正式版（只有一条，不是完整历史）
+
+  > 这条「先证实再显示」是刻意设计。`version.json` 由发版脚本手工维护，Release 被删时
+  > 脚本无从感知；照旧只做「API 失败才兜底」的话，Release 缺失时页面反而更自信地显示
+  > 一个不存在的版本号和一条 404 直链。宁可写「没有」。
 
 ## 使用说明
 
@@ -249,11 +254,15 @@ App 读 `https://os233.github.io/WaterReminder/version.json` —— Pages 上的
 **① 应用内更新。** 所有版本都读它 —— 包括 1.4.0 及更早的老客户端（它们的请求 URL 就是它）。
 有没有新版本、去哪里下载、下载后拿什么摘要校验，全部来自这个文件。
 
-**② 官网的静态兜底数据源。** 官网默认读 GitHub Releases API，但未认证的 API 只有
-**60 次/小时，而且配额按出口 IP 共享** —— 共用出口很容易被别人的请求用光，访客就会看到
-「获取失败」。所以 API 失败时 `site.js` 会退回来读同域的 `version.json`
-（同域、无配额、永远可达），三个页面都如此。因此 **`changelog` 要认真写** ——
-API 失败时官网直接拿它当更新说明显示。
+**② 官网的判断依据与兜底。** `site.js` 读它拿到「期望的 `versionName`」，再去
+`GET /releases/tags/v<versionName>` 证实这个版本**真的存在**（且挂着 `.apk` asset）才显示 ——
+未认证的 API 只有 **60 次/小时、配额按出口 IP 共享**，但绝不能因此把 `version.json` 当权威：
+它是手工维护的，Release 被删时不会跟着变，照它显示就会把不存在的版本号和一条 404 直链
+当正式版本发出去。取不到版本信息时页面明说取不到。
+
+**②b** 更新日志页在 API 失败**或列表为空**时读它渲染一条带「本站清单」标签的记录 ——
+这是唯一一处 `version.json` 会成为展示内容的地方，且明确标注了来源。因此
+**`changelog` 要认真写**：API 失败时官网直接拿它当更新说明显示。
 
 字段与维护者：
 
@@ -263,7 +272,7 @@ API 失败时官网直接拿它当更新说明显示。
 | `versionName` | CI | 给人看的版本号 |
 | `apkUrl` | CI | 指向 Release asset，必须是 https |
 | `sha256` | CI | 该 asset 的摘要（64 位小写十六进制）；为空时 App 跳过下载后校验 |
-| `changelog` | **人工** | App 更新弹窗与官网兜底都读它 |
+| `changelog` | **人工** | App 更新弹窗读它；官网仅在 API 失败或列表为空时用它当兜底记录 |
 | `forceUpdate` | 人工 | 为 `true` 时弹窗没有「稍后」按钮 |
 
 ⚠️ 因此**不要删这个文件**，也不要删 `scripts/sync_version.py` 里的 `VERSION_JSON`。
@@ -295,18 +304,32 @@ Pages 源为 `master` 分支的 `/docs` 目录，站点就是 `docs/` 下的静�
 | `/` | 首页：功能、水合系数、最新版本 |
 | `/download/` | 下载页：最新版本、APK 直链、SHA-256 |
 | `/docs/` | 使用文档与常见问题 |
-| `/changelog/` | 更新日志，前端读 GitHub Releases API，失败时退到 `version.json` 里的最新正式版 |
+| `/changelog/` | 更新日志，前端读 GitHub Releases API，失败或列表为空时退到 `version.json` 里的最新正式版 |
 | `/privacy/` | 隐私政策 |
 
 `docs/assets/site.js` 在浏览器里请求 GitHub 的公开 API，所以版本信息与更新日志都不需要手工同步 ——
-Release 一发布，页面内容就跟着变。但未认证的 API 只有 60 次/小时，且配额**按出口 IP 共享**
-（公司、校园网、运营商 NAT 下很容易被别人的请求用光），所以**三个页面在 API 失败时都会
-退回来读同域的 `version.json`**：首页与下载页拿到版本号、下载直链与 SHA-256，更新日志页拿到
-一条标着「本站清单」的最新正式版记录。`version.json` 只有一条记录，所以那条兜底不是完整历史 ——
+Release 一发布，页面内容就跟着变。
+
+未认证的 API 只有 60 次/小时，且配额**按出口 IP 共享**（公司、校园网、运营商 NAT 下很容易被
+别人的请求用光）。但这**不是**把 `version.json` 当权威来显示的理由：那个文件是手工维护的，
+Release 被删了它不会跟着变。所以首页与下载页的判断顺序是「先证实、再显示」：
+
+1. 读 `version.json` 拿到期望的 `versionName`；
+2. 拿它去 `GET /releases/tags/v<versionName>`，且该 Release 必须挂着 `.apk` asset；
+3. 成立才显示版本号、直链与 SHA-256（摘要优先用 Release asset 的 `digest`，GitHub 官方算的）；
+   不成立就显示「vX.Y.Z 尚无可下载的安装包」并把按钮指向 Releases 页面。
+
+这样 API 挂掉时页面**不会**回退去显示一个未经证实的清单版本号 —— 那正是「Release 已删、
+Manifest 还指着它」时把死链当正式版本发出去的原因。取不到版本信息时宁可明说取不到，
+也不猜。`version.json` 仍然只保留一条记录，所以更新日志页的兜底不是完整历史，
 它只是保证「API 挂掉时页面不会空着、也不会和首页显示的版本号自相矛盾」。
 
-API 返回**空列表**时更新日志页也走这条退路：那多半是 Release 被删了而 Manifest 还在，
-这时写「还没有发布过版本」会和首页显示的版本号直接冲突。
+首页/下载页读 `version.json` 却只把它当「期望值」，还有一层原因：GitHub 的
+`/releases/latest` 完全不看版本号，Release 被删光、只剩一个预发布时，它会把 beta
+的 tag 和 asset 当成「最新版」交给首页 —— 本项目确实发生过这个状态。走 tag 接口就不会。
+
+API 返回**空列表**时更新日志页走 `version.json` 兜底：那多半是 Release 被删了而 Manifest 还在，
+这时写「还没有发布过版本」会和 Manifest 冲突。兜底记录带「本站清单」标签，不冒充 Release 记录。
 Pages 不只是展示 —— **App 的更新检查也读它**（`/version.json`），见「应用内更新怎么工作」。
 
 ### CI
@@ -331,7 +354,7 @@ tag 过滤器是两条 glob：`v[0-9]*.[0-9]*.[0-9]*`（正式）与 `v[0-9]*.[0
 | --- | --- | --- |
 | Release 标记 | 普通 Release | `--prerelease` |
 | `docs/version.json` | CI 写回 | **完全不动** |
-| 官网首页 / 下载页 | 显示这一版 | 不显示（读 `/releases/latest`，该端点排除 prerelease） |
+| 官网首页 / 下载页 | 显示这一版 | 不显示（首页/下载页按 Manifest 的 `versionName` 查 tag，而 Manifest 不动，查的还是上一个正式版） |
 | 官网更新日志页 | 列出 | 列出，带「预发布」标签 |
 | App 内更新 | 会提示 | 不会提示（Manifest 没变） |
 

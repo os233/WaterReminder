@@ -1,7 +1,9 @@
 package com.example.waterreminder.ui
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
@@ -42,6 +44,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import com.example.waterreminder.data.DailyTotal
 import com.example.waterreminder.data.DrinkType
 import com.example.waterreminder.data.UserPrefs
@@ -772,9 +775,11 @@ fun ReminderSection() {
     var dndEnabled by remember { mutableStateOf(helper.isDndEnabled()) }
     var dndStart by remember { mutableIntStateOf(helper.getDndStartHour()) }
     var dndEnd by remember { mutableIntStateOf(helper.getDndEndHour()) }
+    var notificationsAllowed by remember { mutableStateOf(true) }
 
     LaunchedEffect(Unit) {
         selectedInterval = helper.getSavedInterval()
+        notificationsAllowed = hasNotificationPermission(context)
     }
 
     val statusText = if (selectedInterval == 0) {
@@ -783,6 +788,10 @@ fun ReminderSection() {
         "每${selectedInterval}小时提醒一次"
     }
     val dndText = if (dndEnabled) " · ${"%02d".format(dndStart)}:00–${"%02d".format(dndEnd)}:00 免打扰" else ""
+    // 通知权限被拒时闹钟照常触发，通知却被系统静默丢弃 —— 界面必须讲出来，
+    // 否则用户只会看到「设了提醒却从来不响」，无从判断问题在哪
+    val notifText =
+        if (selectedInterval != 0 && !notificationsAllowed) " · 通知权限未开启，提醒不会显示" else ""
 
     Card(
         onClick = { showDialog = true },
@@ -828,7 +837,7 @@ fun ReminderSection() {
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "$statusText$dndText",
+                        text = "$statusText$dndText$notifText",
                         fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -873,8 +882,9 @@ fun ReminderSection() {
                         val isSelected = selectedInterval == hours
                         Card(
                             onClick = {
-                                selectedInterval = hours
-                                setReminder(context, hours)
+                                // 只在真的排上时才改本地状态；排不上（精确闹钟权限被拒）时保持原状，
+                                // 卡片才不会显示一个系统里并不存在的提醒
+                                if (setReminder(context, hours)) selectedInterval = hours
                                 showDialog = false
                             },
                             modifier = Modifier
@@ -1004,17 +1014,31 @@ private fun HourPicker(label: String, hour: Int, onPick: (Int) -> Unit) {
     }
 }
 
-private fun setReminder(context: Context, hours: Int) {
+/** Android 13+ 通知是运行时权限；被拒后闹钟照常触发，但通知会被系统静默丢弃 */
+private fun hasNotificationPermission(context: Context): Boolean {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return true
+    return ContextCompat.checkSelfPermission(
+        context, Manifest.permission.POST_NOTIFICATIONS
+    ) == PackageManager.PERMISSION_GRANTED
+}
+
+/**
+ * 设置 / 关闭提醒。
+ * @return 是否真的生效 —— 精确闹钟权限被拒时排不上，返回 false，调用方据此别改界面状态，
+ *         否则卡片会显示一个系统里并不存在的提醒（用户以为设上了，其实永远不会响）。
+ */
+private fun setReminder(context: Context, hours: Int): Boolean {
     val helper = AlarmManagerHelper(context)
     if (hours == 0) {
         helper.cancelAlarm()
         context.stopService(Intent(context, KeepAliveService::class.java))
-    } else {
-        helper.setRepeatingAlarm(hours)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            context.startForegroundService(Intent(context, KeepAliveService::class.java))
-        } else {
-            context.startService(Intent(context, KeepAliveService::class.java))
-        }
+        return true
     }
+    if (!helper.setRepeatingAlarm(hours)) return false
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        context.startForegroundService(Intent(context, KeepAliveService::class.java))
+    } else {
+        context.startService(Intent(context, KeepAliveService::class.java))
+    }
+    return true
 }

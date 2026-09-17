@@ -78,6 +78,11 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !alarmHelper.canScheduleExactAlarms()) {
             Toast.makeText(this, "请允许设置精确闹钟，确保后台提醒准确", Toast.LENGTH_LONG).show()
             alarmHelper.openAlarmSettings()
+        } else {
+            // 应用被 force-stop（系统省电、清理工具、一键加速）时，闹钟会连同 PendingIntent
+            // 一起被清掉，而 prefs 里的提醒开关仍是「开启」—— 界面看着正常，实际再也不会响。
+            // 这里补排一次；已有待触发闹钟时不会重排，所以不会把提醒时间不断往后推。
+            alarmHelper.restoreAlarmIfNeeded()
         }
 
         checkBatteryOptimization()

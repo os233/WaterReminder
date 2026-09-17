@@ -97,11 +97,16 @@
 - **预发布（beta）**的 tag 形如 `v<versionName>-<后缀>`（如 `v0.0.1-beta.1`），
   `app/build.gradle.kts` 的 `versionName` 必须带同样的后缀 —— `sync_version.py --expect-tag`
   要求两者严格相等，而 APK 文件名由 `versionName` 拼出。预发布与正式发版的差别只有两处：
-  ① Release 必须标 `--prerelease`（不标它就会成为 `/releases/latest` 的候选，
-  beta 会被顶到官网首页的下载按钮上）；② **不得写回 `docs/version.json`** ——
+  ① Release 必须标 `--prerelease`（不标它就会被当成正式 Release 列进 Releases 列表，
+  也会让 `version.json` 指向的那个 tag 被换掉 —— 官网首页的下载按钮是拿 tag 去查的，
+  查错了就等于把 beta 顶上去）；② **不得写回 `docs/version.json`** ——
   Manifest 是所有客户端（含已发布的正式版）唯一的更新源，写进去等于把 beta 推给全部用户。
   因此预发布与它对应的正式版**共用同一个 `versionCode`**，这是「严格递增」的唯一豁免。
   预发布也**不解决**「Manifest 指向的正式包不存在」这类问题 —— 客户端只认正式 tag。
+  ⚠️ 只有 `docs/version.json` 指针正确还不够：**它的机器字段由 CI 写回，都指向某个
+  真实存在的 Release 才算数**。Release 被删而 Manifest 没跟着改时，源码与脚本都发现不了
+  —— 官网靠「查不到 tag 就显示没有」把它暴露出来，App 端则表现为下载 404。删 Release
+  后必须跟着推一个新的正式 tag（或手工修 Manifest，但那违反「机器字段只能 CI 写」，别做）。
 
 ### 更新链路
 
@@ -140,14 +145,21 @@ App 内更新是本项目唯一在运行时依赖外部的链路，**改坏了�
   存在；分发走 Release asset，除发版流程外不得动。别假设磁盘上有上一版 APK 可供
   比对 —— 校验线上包见「发布链路」。
 - `docs/` 是 GitHub Pages 的站点根，只放静态文件，不得引入构建步骤。
-  页面里的版本信息与更新日志优先现读 GitHub Releases API（未认证配额按出口 IP
-  共享，容易被用光），失败时首页与下载页退到同域的 `docs/version.json` 兜底；
+  页面里的版本信息以 GitHub Releases 为**唯一权威**：`version.json` 的地位按页面分。
+  首页与下载页只读它的 `versionName` 当作「期望的版本号」，再查
+  `GET /releases/tags/v<versionName>` —— **Release 与 `.apk` asset 都真实存在才显示**，
+  缺了就显示「尚无可下载的安装包」并指向 Releases 页面。**不得**在查不到 Release 时
+  退回去显示清单里的版本号与 `apkUrl`（那是死链，且版本并不存在）。
+  更新日志页在 API 失败或列表为空时读它渲染一条带「本站清单」标签的兜底记录，
+  这是唯一允许它成为展示内容的情形，且必须标明来源。
+  未认证配额按出口 IP 共享、容易被用光，但配额压力不构成把清单当权威的理由。
   除 `version.json` 外不得再另存版本清单。
 
 ## 发布链路
 
 **权威来源**：版本号在 `app/build.gradle.kts`；**发布 Manifest 是 `docs/version.json`**
-—— App 内更新与官网都读它。GitHub Release 托管 APK asset；Release 页面上的说明由 CI
+—— App 内更新读它，官网把它当「期望的版本号」再去 Releases 求证（见「文件与目录」）。
+GitHub Release 托管 APK asset，也是官网展示的唯一权威；Release 页面上的说明由 CI
 从 `changelog` 生成，不另写一份。
 
 - 推形如 `v1.4.0` 的 tag → `release.yml` 构建签名 APK → 创建 Release 并上传 asset →
