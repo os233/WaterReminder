@@ -182,13 +182,6 @@ jobs:
           PRERELEASE: ${{ steps.channel.outputs.prerelease }}
           TAG_NOTES_FILE: ${{ steps.channel.outputs.notesFile }}
         run: |
-          # 刻意不用 `[ ... ] && FLAG=--prerelease`：run 是 `bash -e`，条件为假时
-          # 整行返回 1，会让脚本在这里直接退出。
-          PRERELEASE_FLAG=""
-          if [ "$PRERELEASE" = "true" ]; then
-            PRERELEASE_FLAG="--prerelease"
-          fi
-
           # Release 说明：正式版取 docs/version.json 的 changelog（唯一手写的正式说明，
           # 官网更新日志页读的就是这个 body）；预发布取 tag 注释，见「判定发布通道」。
           # 用 --generate-notes 的话页面上只剩「Full Changelog: <链接>」，对用户没有信息量。
@@ -204,48 +197,75 @@ jobs:
           fi
           echo "::notice::release-body: prerelease='$PRERELEASE' tagNotesFile='$TAG_NOTES_FILE' notesFile='$NOTES_FILE' bytes=$(wc -c < "$NOTES_FILE") firstLine=$(head -1 "$NOTES_FILE")"
 
-          # 全部 gh 输出都显式打印、退出码显式检查 —— 2026-09-17 踩过：gh release create
-          # 「返回成功」但 GitHub 侧 Release 不存在（随后按 tag 查是 404），而它的 stderr
-          # 在 run 网页上看不到（logs 端点要认证）。所以在这里把原始输出与退出码打进
-          # Annotation，别再靠猜。
-          run_gh() {
-            echo "----- gh $* -----"
-            set +e
-            OUT=$(gh "$@" 2>&1)
-            RC=$?
-            set -e
-            echo "$OUT"
-            echo "----- exit=$RC -----"
-            echo "::notice::gh $1 exit=$RC out=$(echo "$OUT" | head -c 400 | tr '\n' ' ')"
-            return $RC
-          }
+          # ⚠️ 2026-09-17 踩坑记录：这里原本用 `gh release create "$TAG" <apk>`，实测它会
+          #    返回 exit=0，却创建一个**未关联 tag 的 Release**（URL 是 releases/tag/untagged-XXXX），
+          #    于是紧接着按 tag 查是 404。连着失败 3 轮，且它的 stderr 在 run 网页上看不到
+          #    （logs 端点需认证），完全查不动。
+          #    现在改成直接调 REST API：tag_name 显式写在 body 里，不可能变成 untagged，
+          #    而且每一步都有明确的 HTTP 状态码可以判定。
+          API="https://api.github.com/repos/$GITHUB_REPOSITORY"
+          auth=(-H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28")
 
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "Release $TAG 已存在，覆盖 asset 与说明"
-            run_gh release upload "$TAG" app/build/outputs/apk/release/*.apk --clobber
-            run_gh release edit "$TAG" --notes-file "$NOTES_FILE"
-            # 重跑时补标记：手建过的 Release 可能没标 prerelease —— 那样它就成了
-            # /releases/latest 的候选，会把 beta 顶到官网下载页上。
-            if [ -n "$PRERELEASE_FLAG" ]; then
-              run_gh release edit "$TAG" --prerelease
-            fi
+          # 1) 按 tag 查是否已有 Release，拿到它的 id（没有就是 404）
+          CODE=$(curl -sSL -o "$RUNNER_TEMP/rel.json" -w '%{http_code}' "${auth[@]}" "$API/releases/tags/$TAG")
+          echo "查询 Release：HTTP $CODE"
+
+          # 2) 组装 body（tag_name 显式指定 + 说明正文），有则 PATCH 改说明，无则 POST 建
+          python3 - "$TAG" "$NOTES_FILE" "$PRERELEASE" > "$RUNNER_TEMP/body.json" <<'PY'
+          import json, sys
+          tag, notes_path, prerelease = sys.argv[1], sys.argv[2], sys.argv[3]
+          notes = open(notes_path, encoding='utf-8').read()
+          body = {"tag_name": tag, "name": tag, "body": notes, "draft": False,
+                  "prerelease": prerelease == "true"}
+          print(json.dumps(body, ensure_ascii=False))
+          PY
+
+          if [ "$CODE" = "200" ]; then
+            REL_ID=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1],encoding="utf-8"))["id"])' "$RUNNER_TEMP/rel.json")
+            echo "Release $TAG 已存在（id=$REL_ID），更新说明"
+            # PATCH 不带 tag_name（改 tag 需要单独接口，这里只改说明与标记）
+            python3 - "$NOTES_FILE" "$PRERELEASE" > "$RUNNER_TEMP/patch.json" <<'PY'
+          import json, sys
+          notes_path, prerelease = sys.argv[1], sys.argv[2]
+          print(json.dumps({"body": open(notes_path, encoding='utf-8').read(),
+                            "prerelease": prerelease == "true"}, ensure_ascii=False))
+          PY
+            CODE=$(curl -sSL -o "$RUNNER_TEMP/rel.json" -w '%{http_code}' -X PATCH "${auth[@]}" \
+              -d @"$RUNNER_TEMP/patch.json" "$API/releases/$REL_ID")
+            echo "更新 Release：HTTP $CODE"
+            [ "$CODE" = "200" ] || { echo "::error::更新 Release 失败（HTTP $CODE）：$(head -c 300 "$RUNNER_TEMP/rel.json")"; exit 1; }
           else
             echo "Release $TAG 不存在，创建"
-            run_gh release create "$TAG" app/build/outputs/apk/release/*.apk \
-              --title "$TAG" --notes-file "$NOTES_FILE" $PRERELEASE_FLAG
+            CODE=$(curl -sSL -o "$RUNNER_TEMP/rel.json" -w '%{http_code}' -X POST "${auth[@]}" \
+              -d @"$RUNNER_TEMP/body.json" "$API/releases")
+            echo "创建 Release：HTTP $CODE"
+            [ "$CODE" = "201" ] || { echo "::error::创建 Release 失败（HTTP $CODE）：$(head -c 300 "$RUNNER_TEMP/rel.json")"; exit 1; }
+            REL_ID=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1],encoding="utf-8"))["id"])' "$RUNNER_TEMP/rel.json")
           fi
+          echo "::notice::release: tag=$TAG id=$REL_ID createOrUpdateHttp=$CODE"
 
-          # 立刻回读确认，并把结果打进 Annotation。这一步不是装饰：
-          # 2026-09-17 实测过「gh release create 返回 0、下一步按 tag 查 Release 却 404」，
-          # 而失败信息长成「取不到 asset 摘要」，指向完全错误的方向（让人去查 digest 计算延迟，
-          # 实际是 Release 没建出来）。这里当场判定，失败信息直接给 HTTP 状态。
-          CODE=$(curl -sSL -o "$RUNNER_TEMP/rel.json" -w '%{http_code}' \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/tags/$TAG")
+          # 3) 上传 APK asset（先删同名旧 asset，再 POST 上传）
+          APK=$(ls app/build/outputs/apk/release/*.apk | head -1)
+          APK_NAME=$(basename "$APK")
+          echo "上传 asset：$APK_NAME"
+          OLD_ID=$(curl -sSL "${auth[@]}" "$API/releases/$REL_ID/assets?per_page=100" \
+            | python3 -c 'import json,sys; a=[x for x in json.load(sys.stdin) if x["name"]==sys.argv[1]]; print(a[0]["id"] if a else "")' "$APK_NAME")
+          if [ -n "$OLD_ID" ]; then
+            echo "删除同名旧 asset id=$OLD_ID"
+            curl -sSL -o /dev/null -w 'delete HTTP=%{http_code}\n' -X DELETE "${auth[@]}" "$API/releases/assets/$OLD_ID"
+          fi
+          UP_CODE=$(curl -sSL -o "$RUNNER_TEMP/asset.json" -w '%{http_code}' -X POST "${auth[@]}" \
+            -H "Content-Type: application/vnd.android.package-archive" \
+            --data-binary @"$APK" \
+            "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$REL_ID/assets?name=$APK_NAME")
+          echo "上传 asset：HTTP $UP_CODE"
+          [ "$UP_CODE" = "201" ] || { echo "::error::上传 asset 失败（HTTP $UP_CODE）：$(head -c 300 "$RUNNER_TEMP/asset.json")"; exit 1; }
+
+          # 4) 回读确认：tag 必须能查到 Release，且 asset 在里面
+          CODE=$(curl -sSL -o "$RUNNER_TEMP/rel.json" -w '%{http_code}' "${auth[@]}" "$API/releases/tags/$TAG")
           echo "回读 Release：HTTP $CODE"
           if [ "$CODE" != "200" ]; then
-            echo "::error::创建/更新 Release 后回读失败（HTTP $CODE，tag=$TAG）。响应：$(head -c 300 "$RUNNER_TEMP/rel.json")"
+            echo "::error::创建/更新 Release 后按 tag 回读失败（HTTP $CODE，tag=$TAG）。响应：$(head -c 300 "$RUNNER_TEMP/rel.json")"
             exit 1
           fi
           python3 -c 'import json,sys; d=json.load(open(sys.argv[1],encoding="utf-8")); print("Release:", d["tag_name"], "prerelease=", d["prerelease"]); print("assets:", [a["name"] for a in d.get("assets") or []])' "$RUNNER_TEMP/rel.json"
