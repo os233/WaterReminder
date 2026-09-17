@@ -204,17 +204,34 @@ jobs:
           fi
           echo "::notice::release-body: prerelease='$PRERELEASE' tagNotesFile='$TAG_NOTES_FILE' notesFile='$NOTES_FILE' bytes=$(wc -c < "$NOTES_FILE") firstLine=$(head -1 "$NOTES_FILE")"
 
+          # 全部 gh 输出都显式打印、退出码显式检查 —— 2026-09-17 踩过：gh release create
+          # 「返回成功」但 GitHub 侧 Release 不存在（随后按 tag 查是 404），而它的 stderr
+          # 在 run 网页上看不到（logs 端点要认证）。所以在这里把原始输出与退出码打进
+          # Annotation，别再靠猜。
+          run_gh() {
+            echo "----- gh $* -----"
+            set +e
+            OUT=$(gh "$@" 2>&1)
+            RC=$?
+            set -e
+            echo "$OUT"
+            echo "----- exit=$RC -----"
+            echo "::notice::gh $1 exit=$RC out=$(echo "$OUT" | head -c 400 | tr '\n' ' ')"
+            return $RC
+          }
+
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG 已存在，覆盖 asset 与说明"
-            gh release upload "$TAG" app/build/outputs/apk/release/*.apk --clobber
-            gh release edit "$TAG" --notes-file "$NOTES_FILE"
+            run_gh release upload "$TAG" app/build/outputs/apk/release/*.apk --clobber
+            run_gh release edit "$TAG" --notes-file "$NOTES_FILE"
             # 重跑时补标记：手建过的 Release 可能没标 prerelease —— 那样它就成了
             # /releases/latest 的候选，会把 beta 顶到官网下载页上。
             if [ -n "$PRERELEASE_FLAG" ]; then
-              gh release edit "$TAG" --prerelease
+              run_gh release edit "$TAG" --prerelease
             fi
           else
-            gh release create "$TAG" app/build/outputs/apk/release/*.apk \
+            echo "Release $TAG 不存在，创建"
+            run_gh release create "$TAG" app/build/outputs/apk/release/*.apk \
               --title "$TAG" --notes-file "$NOTES_FILE" $PRERELEASE_FLAG
           fi
 
