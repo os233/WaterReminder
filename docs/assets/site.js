@@ -239,7 +239,11 @@
 
       var version = cleanVersion(manifest.versionName);
       return findStableRelease('v' + version).then(function (release) {
-        if (!release) return renderNoRelease('v' + version + ' 尚无可下载的安装包');
+        /* 这里只写「尚无可下载的安装包」，不带版本号：首页 hero 区在该槽位前面
+           已经写死了「最新版本」四个字，拼上 `v0.0.1` 会读成
+           「最新版本 v0.0.1 尚无可下载的安装包」—— 既和下方「最新版本」卡片重复，
+           也容易被误读成「v0.0.1 是最新版」。 */
+        if (!release) return renderNoRelease('尚无可下载的安装包');
         var apk = findApk(release);
         return renderLatest(apk, {
           version: version,
