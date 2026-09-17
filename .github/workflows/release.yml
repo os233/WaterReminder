@@ -99,8 +99,13 @@ jobs:
           #            照抄只会抄到上一版正式版的文字。把正文放进 tag 对象里，不碰任何已发布
           #            客户端读的文件，也就不违反 Manifest 的兼容契约。
           if [ "$(git cat-file -t "$TAG" 2>/dev/null)" = "tag" ]; then
-            # annotated tag：正文是注释去掉首行标题后的部分
-            git tag -l --format='%(contents:body)' "$TAG" | sed '/^$/d' > "$RUNNER_TEMP/tag-notes.txt"
+            # annotated tag：取整条 message。
+            # ⚠️ 不能用 `%(contents:body)` —— Git 把 message 的**首个空行之前**算 subject、
+            #    之后的才算 body，而 `git tag -a -m` 写多行时不会自动加这个空行，于是
+            #    「既非空行分隔、又只有一段」的消息会被整个判给 subject，body 返回空。
+            #    2026-09-17 实测：7 行注释取 body 只剩 1 行。用 %(contents) 拿全文
+            #    （已验证：首行就是 message 首行，不含 tag 名），去空行即可。
+            git tag -l --format='%(contents)' "$TAG" | sed '/^$/d' > "$RUNNER_TEMP/tag-notes.txt"
           else
             # lightweight tag 没有注释对象，也没法事后补 —— 只能空着走兜底文案
             : > "$RUNNER_TEMP/tag-notes.txt"
