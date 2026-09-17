@@ -212,7 +212,21 @@ jobs:
             gh release create "$TAG" app/build/outputs/apk/release/*.apk \
               --title "$TAG" --notes-file "$NOTES_FILE" $PRERELEASE_FLAG
           fi
-          gh release view "$TAG" --json assets --jq '.assets[].name'
+
+          # 立刻回读确认，并把结果打进 Annotation。这一步不是装饰：
+          # 2026-09-17 实测过「gh release create 返回 0、下一步按 tag 查 Release 却 404」，
+          # 而失败信息长成「取不到 asset 摘要」，指向完全错误的方向（让人去查 digest 计算延迟，
+          # 实际是 Release 没建出来）。这里当场判定，失败信息直接给 HTTP 状态。
+          CODE=$(curl -sSL -o "$RUNNER_TEMP/rel.json" -w '%{http_code}' \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/tags/$TAG")
+          echo "回读 Release：HTTP $CODE"
+          if [ "$CODE" != "200" ]; then
+            echo "::error::创建/更新 Release 后回读失败（HTTP $CODE，tag=$TAG）。响应：$(head -c 300 "$RUNNER_TEMP/rel.json")"
+            exit 1
+          fi
+          python3 -c 'import json,sys; d=json.load(open(sys.argv[1],encoding="utf-8")); print("Release:", d["tag_name"], "prerelease=", d["prerelease"]); print("assets:", [a["name"] for a in d.get("assets") or []])' "$RUNNER_TEMP/rel.json"
 
       # 应用内更新按这个摘要判断安装包是否完整，所以这里必须核对上传后的值
       - name: 核对 Release asset 的 SHA-256
@@ -224,19 +238,33 @@ jobs:
           # asset 的 digest 由 GitHub 在上传后异步计算，刚上传完可能还是 null ——
           # 一次性查询把它当失败会误杀（2026-09-17 实测：两次都死在这里，且失败信息
           # 与「asset 真的不存在」完全一样，无法区分）。所以轮询重试。
+          #
+          # ⚠️ 但必须把「HTTP 404（Release 不存在）」与「200 但 digest 还是 null（还没算完）」
+          #    分开报 —— 2026-09-17 实测踩过：Release 压根没建出来，这里却报「GitHub 可能
+          #    还没算完」，把人引去查 digest 延迟，白查一轮。所以下面把状态码单独取出来。
           REMOTE_SUM=""
           for i in 1 2 3 4 5 6; do
-            REMOTE_SUM=$(curl -sSL -H "Authorization: Bearer $GH_TOKEN" \
+            CODE=$(curl -sSL -o "$RUNNER_TEMP/rel.json" -w '%{http_code}' \
+              -H "Authorization: Bearer $GH_TOKEN" \
               -H "Accept: application/vnd.github+json" \
-              "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/tags/$TAG" \
-              | python3 -c 'import json,sys; assets = json.load(sys.stdin).get("assets") or []; apk = [a for a in assets if a["name"].lower().endswith(".apk")]; print((apk[0].get("digest") or "").removeprefix("sha256:") if apk else "")')
+              "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/tags/$TAG")
+            if [ "$CODE" = "404" ]; then
+              echo "::error::Release $TAG 不存在（HTTP 404）—— 上一步的创建没有生效，不是 digest 延迟。响应：$(head -c 300 "$RUNNER_TEMP/rel.json")"
+              exit 1
+            fi
+            if [ "$CODE" != "200" ]; then
+              echo "第 $i 次查询异常（HTTP $CODE），10 秒后重试…"
+              sleep 10
+              continue
+            fi
+            REMOTE_SUM=$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1],encoding="utf-8")); apk=[a for a in (d.get("assets") or []) if a["name"].lower().endswith(".apk")]; print((apk[0].get("digest") or "").removeprefix("sha256:") if apk else "")' "$RUNNER_TEMP/rel.json")
             if [ -n "$REMOTE_SUM" ]; then break; fi
-            echo "第 $i 次查询还没有 digest，10 秒后重试…"
+            echo "第 $i 次查询还没有 digest（Release 在、asset=$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1],encoding="utf-8")); print([a["name"] for a in (d.get("assets") or [])])' "$RUNNER_TEMP/rel.json")），10 秒后重试…"
             sleep 10
           done
           echo "Release asset 的 SHA-256：$REMOTE_SUM"
           if [ -z "$REMOTE_SUM" ]; then
-            echo "::error::取不到 Release asset 的摘要（已重试 6 次）：asset 可能真的没上传，或 GitHub 迟迟未算出。"
+            echo "::error::取不到 Release asset 的摘要（已重试 6 次，Release 存在但 digest 一直为空）：asset 可能真的没上传，或 GitHub 迟迟未算出。"
             exit 1
           fi
           if [ "$REMOTE_SUM" != "$LOCAL_SUM" ]; then
