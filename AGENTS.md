@@ -100,9 +100,14 @@
   ① Release 必须标 `--prerelease`（不标它就会被当成正式 Release 列进 Releases 列表，
   也会让 `version.json` 指向的那个 tag 被换掉 —— 官网首页的下载按钮是拿 tag 去查的，
   查错了就等于把 beta 顶上去）；② **不得写回 `docs/version.json`** ——
-  Manifest 是所有客户端（含已发布的正式版）唯一的更新源，写进去等于把 beta 推给全部用户。
-  因此预发布与它对应的正式版**共用同一个 `versionCode`**，这是「严格递增」的唯一豁免。
-  预发布也**不解决**「Manifest 指向的正式包不存在」这类问题 —— 客户端只认正式 tag。
+  Manifest 是所有客户端（含已发布的正式版）唯一的更新源，写进去等于把 beta 推给全部用户；
+  ③ 预发布自己的更新说明写在 **tag 的注释里**（`git tag -a v0.0.2-beta.1 -m "<正文>"`），
+  `release.yml` 的「判定发布通道」步骤把它导出到 `steps.channel.outputs.notes`，
+  「创建 Release」步骤据此选 body 源（预发布用 tag 注释，正式版用 Manifest 的 `changelog`）。
+  这是「预发布不动 Manifest」与「beta 也需要说明」之间唯一不违反兼容契约的折中：
+  正文存在 tag 对象里，不碰任何已发布客户端读的文件。
+  三者合起来意味着预发布与它对应的正式版**共用同一个 `versionCode`**，这是「严格递增」
+  的唯一豁免。预发布也**不解决**「Manifest 指向的正式包不存在」这类问题 —— 客户端只认正式 tag。
   ⚠️ 只有 `docs/version.json` 指针正确还不够：**它的机器字段由 CI 写回，都指向某个
   真实存在的 Release 才算数**。Release 被删而 Manifest 没跟着改时，源码与脚本都发现不了
   —— 官网靠「查不到 tag 就显示没有」把它暴露出来，App 端则表现为下载 404。删 Release

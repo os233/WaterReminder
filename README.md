@@ -213,13 +213,26 @@ Release 已经建好、Manifest 却没更新 —— 所有客户端永远收不�
 # 4. 推 master —— tag 必须打在已推到 master 的提交上，顺序与正式版相同
 git add app/build.gradle.kts
 git commit -m "release: 预发布 0.0.1-beta.1" && git push origin master
-# 5. 推预发布 tag
-git tag v0.0.1-beta.1 && git push origin v0.0.1-beta.1
+# 5. 打**带注释**的 tag（-a + -m）：正文就是这一版的更新说明，CI 拿它当 Release body。
+#    标题行会被去掉，从空行后开始算正文；不写正文就只能落一句「没有填写更新说明」。
+git tag -a v0.0.1-beta.1 -m "$(printf 'WaterReminder 0.0.1-beta.1\n\n1. xxx\n2. yyy\n')"
+git push origin v0.0.1-beta.1
 ```
 
 CI 会构建签名 APK、建一个标着 **Pre-release** 的 Release 并上传 asset，然后**跳过** Manifest
 写回 —— 所以老客户端不会收到 beta，官网首页也不会把它当成最新版。包在
 `releases/tag/v0.0.1-beta.1`，更新日志页会带上「预发布」标签。
+
+**更新说明的来源按通道分**（`release.yml` 的「判定发布通道」与「创建 Release」两步）：
+
+| 通道 | Release body 取自 | 为什么 |
+| --- | --- | --- |
+| 正式版 | `docs/version.json` 的 `changelog` | 唯一手写的正式说明，App 更新弹窗读的也是它 |
+| 预发布 | **tag 的注释** | 预发布不写回 Manifest，在 Manifest 里没有自己的说明，照抄只会抄到上一版正式版的文字 |
+
+⚠️ 因此**预发布的 tag 必须用 `-a` 写注释**。`git tag v0.0.2-beta.1`（lightweight，无注释）
+不会报错，但 Release 说明会退化成一句「本次发版没有填写更新说明」——因为 lightweight tag
+没有注释对象，事后也补不上（只能重打 tag 并 force push）。
 
 ⚠️ `versionCode` 与它对应的正式版**共用**（beta 是 1，正式 0.0.1 也是 1）—— 这是「严格递增」
 的唯一豁免，理由是 beta 不写回 Manifest、客户端感知不到它。正式版发布时再往上递增。

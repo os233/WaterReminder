@@ -86,6 +86,26 @@ jobs:
               ;;
           esac
 
+          # 预发布与正式版的 Release 说明来自不同地方：
+          #   正式版 → docs/version.json 的 changelog（唯一手写的正式说明，也是 App 弹窗读的）
+          #   预发布 → tag 的注释。因为预发布**不得**写回 Manifest（那是所有客户端的更新源，
+          #            写进去等于把 beta 推给全部用户），所以它在 Manifest 里没有自己的说明，
+          #            照抄只会抄到上一版正式版的文字。把正文放进 tag 对象里，不碰任何已发布
+          #            客户端读的文件，也就不违反 Manifest 的兼容契约。
+          if [ "$(git cat-file -t "$TAG" 2>/dev/null)" = "tag" ]; then
+            # annotated tag：正文是注释去掉首行标题后的部分
+            git tag -l --format='%(contents:body)' "$TAG" | sed '/^$/d' > "$RUNNER_TEMP/tag-notes.txt"
+          else
+            # lightweight tag 没有注释对象，也没法事后补 —— 只能空着走兜底文案
+            : > "$RUNNER_TEMP/tag-notes.txt"
+          fi
+          echo "notesFile=$RUNNER_TEMP/tag-notes.txt" >> "$GITHUB_OUTPUT"
+          if [ -s "$RUNNER_TEMP/tag-notes.txt" ]; then
+            echo "tag 注释：$(wc -c < "$RUNNER_TEMP/tag-notes.txt") 字节"
+          else
+            echo "tag 注释为空（lightweight tag 或未写 message）"
+          fi
+
       # README 已说明：Gradle 8.11.1 只支持到 Java 23，固定用 17
       - name: 安装 JDK 17
         uses: actions/setup-java@v6
@@ -146,6 +166,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ inputs.tag || github.ref_name }}
           PRERELEASE: ${{ steps.channel.outputs.prerelease }}
+          TAG_NOTES_FILE: ${{ steps.channel.outputs.notesFile }}
         run: |
           # 刻意不用 `[ ... ] && FLAG=--prerelease`：run 是 `bash -e`，条件为假时
           # 整行返回 1，会让脚本在这里直接退出。
@@ -154,25 +175,32 @@ jobs:
             PRERELEASE_FLAG="--prerelease"
           fi
 
+          # Release 说明：正式版取 docs/version.json 的 changelog（唯一手写的正式说明，
+          # 官网更新日志页读的就是这个 body）；预发布取 tag 注释，见「判定发布通道」。
+          # 用 --generate-notes 的话页面上只剩「Full Changelog: <链接>」，对用户没有信息量。
+          if [ "$PRERELEASE" = "true" ]; then
+            NOTES_FILE="$TAG_NOTES_FILE"
+          else
+            NOTES_FILE="$RUNNER_TEMP/manifest-changelog.txt"
+            python3 -c "import json;print(json.load(open('docs/version.json',encoding='utf-8')).get('changelog') or '')" > "$NOTES_FILE"
+          fi
+          if [ ! -s "$NOTES_FILE" ]; then
+            echo "::warning::更新说明为空（预发布看 tag 注释，正式版看 docs/version.json 的 changelog）"
+            printf '%s\n' "（本次发版没有填写更新说明）" > "$NOTES_FILE"
+          fi
+
           if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "Release $TAG 已存在，覆盖 asset"
+            echo "Release $TAG 已存在，覆盖 asset 与说明"
             gh release upload "$TAG" app/build/outputs/apk/release/*.apk --clobber
+            gh release edit "$TAG" --notes-file "$NOTES_FILE"
             # 重跑时补标记：手建过的 Release 可能没标 prerelease —— 那样它就成了
             # /releases/latest 的候选，会把 beta 顶到官网下载页上。
             if [ -n "$PRERELEASE_FLAG" ]; then
               gh release edit "$TAG" --prerelease
             fi
           else
-            # Release 说明直接取 docs/version.json 的 changelog —— 那是更新说明唯一手写的地方，
-            # 官网更新日志页读的就是这个 body。用 --generate-notes 的话页面上只剩
-            # 「Full Changelog: <链接>」，对用户没有信息量。
-            NOTES=$(python3 -c "import json;print(json.load(open('docs/version.json',encoding='utf-8')).get('changelog') or '')")
-            if [ -z "$NOTES" ]; then
-              echo "::warning::docs/version.json 的 changelog 是空的，Release 说明与官网更新日志会没有内容"
-              NOTES="（本次发版没有填写更新说明）"
-            fi
             gh release create "$TAG" app/build/outputs/apk/release/*.apk \
-              --title "$TAG" --notes "$NOTES" $PRERELEASE_FLAG
+              --title "$TAG" --notes-file "$NOTES_FILE" $PRERELEASE_FLAG
           fi
           gh release view "$TAG" --json assets --jq '.assets[].name'
 
