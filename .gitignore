@@ -35,3 +35,9 @@ keystore.properties
 /app/release/
 # 兜底：APK 一律不入库（曾有 3 个误入库进了历史），别只靠上面的目录规则
 *.apk
+
+# ---- git filter-branch 的临时工作目录 ----
+# 它建在**仓库根目录**（不是 .git/ 里），跑完本该自删；2026-09-15 那次改写历史
+# （清除误入库的 APK）留下的没清成。每次 filter-branch 都会重建，所以直接忽略，
+# 免得它一直挂在 git status 里当未跟踪文件。
+/.git-rewrite/
