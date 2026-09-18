@@ -29,10 +29,11 @@ Kotlin + Jetpack Compose 编写，无广告、无账号、无联网上传 ——
 - 连续达标天数（streak）统计
 
 **提醒**
-- 按 1 / 2 / 3 小时间隔循环提醒
+- 按 1 / 2 / 3 小时间隔循环提醒，通知带提示音与震动
 - 免打扰时段可自定义起止时间，**支持跨午夜**（如 22:00 – 次日 08:00）
 - 开机自启，重启后自动恢复提醒
-- 常驻前台服务保活，避免系统杀掉闹钟
+- 常驻前台服务保活；被系统强制停止后，重新打开应用会按**原定时刻**补排闹钟（不会把提醒往后推）
+- 未关闭电池优化时，提醒卡片会直接提示「可能不提醒」，并在设置弹窗里给出关闭入口
 
 **历史**
 - 最近 7 天汇总：达标天数、日均饮水量
@@ -70,6 +71,9 @@ Kotlin + Jetpack Compose 编写，无广告、无账号、无联网上传 ——
 - Android 13+ 会弹出通知权限申请，允许后提醒才能显示
 - Android 12+ 需在系统设置中授予「闹钟和提醒」权限，否则提醒不准时
 - 部分国产 ROM 需手动允许自启动与后台运行，否则提醒会被杀掉
+- **建议关闭电池优化**：应用被系统强制停止（厂商的一键清理、智能省电）后，已排好的闹钟会被
+  一起清掉，而唯一的恢复入口是「重新打开应用」—— 这期间不会有任何提醒。提醒卡片会检测这一点，
+  并在设置弹窗里提供关闭电池优化的入口
 
 **日常使用**
 
@@ -204,7 +208,8 @@ Release 已经建好、Manifest 却没更新 —— 所有客户端永远收不�
 预发布和正式发版走**同一条链路、同一个 workflow**，区别只在 tag 带后缀、以及不写 Manifest：
 
 ```bash
-# 1. 改 app/build.gradle.kts：versionName 带后缀，versionCode 与对应的正式版共用
+# 1. 改 app/build.gradle.kts：versionName 带后缀；versionCode 用「对应正式版」那个数，
+#    不是沿用上一版的（发 0.0.1-beta.1 用 1，之后发 0.0.2-beta.1 用 2）
 #    versionCode = 1
 #    versionName = "0.0.1-beta.1"
 # 2. docs/version.json 一个字都不改（预发布不写回，changelog 也不必为它更新）
@@ -234,8 +239,12 @@ CI 会构建签名 APK、建一个标着 **Pre-release** 的 Release 并上传 a
 不会报错，但 Release 说明会退化成一句「本次发版没有填写更新说明」——因为 lightweight tag
 没有注释对象，事后也补不上（只能重打 tag 并 force push）。
 
-⚠️ `versionCode` 与它对应的正式版**共用**（beta 是 1，正式 0.0.1 也是 1）—— 这是「严格递增」
-的唯一豁免，理由是 beta 不写回 Manifest、客户端感知不到它。正式版发布时再往上递增。
+⚠️ `versionCode` 与它**对应的正式版**共用 —— 也就是跟着 `versionName` 的第二段走，
+**不是沿用上一版的**。`0.0.3-beta.1` 用 `3`（它的正式版 `0.0.3` 也是 3），而不是沿用 `0.0.2` 的 `2`。
+这是「严格递增」的唯一豁免，理由是 beta 不写回 Manifest、客户端感知不到它。
+
+⚠️ 沿用上一版的 `versionCode` 会让装了上一个 beta 的用户**永远收不到更新提示** ——
+版本比较用的是整数 `versionCode`，相同就不算「有新版」。
 
 ⚠️ 预发布**不解决**「Manifest 指向的正式包不存在」这类问题：它不写回 Manifest，所以 App 内更新
 与官网下载页读到的仍是上一个正式版。要让客户端真正拿到包，必须发正式 tag。
@@ -403,7 +412,7 @@ release 工作流需要在仓库 Settings → Secrets and variables → Actions 
     ├── AndroidManifest.xml      # 权限、组件声明（保活服务为 specialUse 前台服务）
     ├── res/                     # 图标、主题、colors、file_paths.xml
     └── java/com/example/waterreminder/
-        ├── MainActivity.kt          # 入口：通知 / 精确闹钟 / 电池优化提示、保活服务、NavHost、更新弹窗
+        ├── MainActivity.kt          # 入口：通知 / 精确闹钟权限、保活服务、NavHost、更新弹窗
         ├── WaterReminderApp.kt      # Application（空实现，仅在清单中声明）
         ├── data/
         │   ├── WaterRecord.kt       # Room 实体
@@ -415,12 +424,12 @@ release 工作流需要在仓库 Settings → Secrets and variables → Actions 
         │       ├── UpdateChecker.kt # 读 Pages 的 version.json 检查更新、下载并校验 SHA-256 后安装
         │       └── UpdateInfo.kt    # 一次可用更新的数据（对应 version.json 的顶层字段）
         ├── notification/
-        │   ├── AlarmManagerHelper.kt # 闹钟调度、免打扰判断
-        │   ├── AlarmReceiver.kt     # 提醒触发
+        │   ├── AlarmManagerHelper.kt # 闹钟调度、免打扰判断、按原定时刻补排
+        │   ├── AlarmReceiver.kt     # 提醒触发、通知渠道（含震动）创建
         │   ├── BootReceiver.kt      # 开机恢复
         │   └── KeepAliveService.kt  # 前台保活服务
         └── ui/
-            ├── WaterReminderScreen.kt # 首页
+            ├── WaterReminderScreen.kt # 首页（含提醒设置与电池优化入口）
             ├── HistoryScreen.kt     # 历史与统计
             └── theme/               # 主题配色
 ```
@@ -459,7 +468,16 @@ data class WaterRecord(
   Linux CI 上 `./gradlew` 若是 CRLF 会直接报 `bash\r: No such file or directory`
 - Android 13+ 需要授予通知权限；Android 12+ 需要「闹钟和提醒」权限，否则提醒不准时
 - 保活服务使用 `specialUse` 类型前台服务（`dataSync` 在 Android 15 上有 6 小时强制停止限制）
-- 部分国产 ROM 需要手动允许自启动与后台运行，否则提醒会被杀掉
+- 部分国产 ROM（realme / OPPO / 小米等）需要手动允许自启动与后台运行，否则提醒会被杀掉。
+  **最常见的一种表现是「从来没提醒过」**：ROM 在后台直接 force-stop 应用，这会清掉
+  AlarmManager 里所有闹钟与 PendingIntent，且被 force-stop 的应用处于 `stopped` 状态，
+  **任何广播都唤不醒它**（连 `BOOT_COMPLETED` 也不行），只能靠用户手动再打开一次应用。
+  前台服务挡不住这种清理。诊断方法：`adb shell dumpsys package <pkg> | grep stopped`
+  与 `adb shell dumpsys activity exit-info <pkg>`（`reason=13` + `description=... due to o-stop`
+  即为被系统强停）
+- 电池优化同理：未加入白名单时，Doze / App Standby 会推迟 `setExactAndAllowWhileIdle` 的
+  触发时刻。应用首页的提醒卡片会显示「未关闭电池优化，可能不提醒」，设置弹窗里提供
+  「关闭电池优化」按钮直接拉起系统对话框；不开也能用，只是提醒可能不准时
 - APK 不再入库，改由 GitHub Release asset 分发（`.github/workflows/release.yml`）；
   `app/release/` 只作本地留档并已加入 `.gitignore`。迁移前 Pages 上的旧直链（`app/release/*.apk`）会随之失效
 - 仓库没有测试套件，**应用内更新的「下载 → 校验 → 安装」只能装到设备上手动验证**。
