@@ -133,6 +133,18 @@ App 内更新是本项目唯一在运行时依赖外部的链路，**改坏了�
   「没有摘要」处理（跳过下载后校验），**不得**拿一个没校验过的值去比对。
 - **下载完必须先校验 SHA-256，再交给安装器**：不一致就删包并提示重试。
   不得为「少一步」删掉这段。
+- **安装包必须落在应用自己的外部私有目录**（`setDestinationInExternalFilesDir` +
+  `getExternalFilesDir(DIRECTORY_DOWNLOADS)`），**不得**改回公共 Downloads 目录 ——
+  本应用没有声明任何存储权限（`appops` 里 `READ` / `WRITE_EXTERNAL_STORAGE` 都是 `ignore`），
+  FUSE 会拒绝遍历公共目录，`File.exists()` 恒为 `false`，于是下载成功了也静默返回。
+  改落点必须同步改 `res/xml/file_paths.xml`（`<external-files-path>`），否则
+  `FileProvider.getUriForFile` 抛 `IllegalArgumentException`。
+- **`ACTION_DOWNLOAD_COMPLETE` 的接收器必须用 `RECEIVER_EXPORTED` 注册**，
+  **不得**改成 `RECEIVER_NOT_EXPORTED` —— 该广播由 `com.android.providers.downloads`
+  （appId 10060）发出，既不是 root / system（`ActivityManager.canAccessUnexportedComponents`
+  只放行 uid 0 与 1000）也不是本应用，AMS 会按 `Exported Denial` 直接丢弃它，
+  表现就是「下载完装不上」且没有任何报错。放开导出没有实际风险：接收器先按
+  `downloadId` 过滤，再向 `DownloadManager` 复核状态，最后还要比对 SHA-256。
 - **任何失败都只返回 `Failed`**：断网、HTTP 非 2xx、JSON 结构不符、字段非法 ——
   不抛异常、不弹错误提示、不影响 App 其余功能。
 - 自动检查**必须只在真问到结果时才写** `update_prefs.last_check_at`（12 小时节流），

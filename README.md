@@ -168,7 +168,7 @@ APK asset 与 Release 页面，页面上的说明由 CI 从 `changelog` 生成�
    Android App         官网
         │                │
    读 version.json   读 Releases API
-   比 versionCode   (失败退到 version.json)
+   比 versionCode   (仅更新日志页退到 version.json)
         │
         ▼
   下载 Release 里的 APK → 校验 SHA-256 → 交给安装器
@@ -257,6 +257,16 @@ App 读 `https://os233.github.io/WaterReminder/version.json` —— Pages 上的
   （API 28 以下回退到 `versionCode`）。符合 Android 的版本模型，也不依赖 `versionName`
   的数字段恰好有序
 - 下载完成后算安装包的 SHA-256 与 `sha256` 字段比对，不一致就删掉重来，不交给安装器
+- 安装包由系统的 `DownloadManager` 下到**应用自己的外部私有目录**
+  （`getExternalFilesDir(DIRECTORY_DOWNLOADS)`）。**不能落公共「下载」目录**：本应用没有
+  声明任何存储权限，分区存储（FUSE）下 `File.exists()` 对公共目录恒为 `false`，
+  下载成功了也会被当成「文件不存在」静默放弃。落点必须与 `res/xml/file_paths.xml` 的
+  `<external-files-path>` 一致，否则 `FileProvider.getUriForFile` 会抛异常
+- 下载完成的广播（`ACTION_DOWNLOAD_COMPLETE`）由系统的下载提供方发出，接收器必须用
+  `RECEIVER_EXPORTED` 注册才收得到 —— 它既不是本应用也不是系统 uid，用
+  `RECEIVER_NOT_EXPORTED` 会被系统直接丢弃，表现是「下载完装不上」且毫无报错。
+  放开导出没有实际风险：先按 `downloadId` 过滤，再向 `DownloadManager` 复核状态，
+  最后还要比对 SHA-256
 - 自动检查最多每 12 小时一次；手动检查忽略节流，并明确区分「已是最新」和「没查到」
 - 任何失败（断网、HTTP 错误、字段缺失或非法）都只当作「没有更新」，不影响使用
 - `forceUpdate` 为 `true` 时弹窗没有「稍后」按钮
