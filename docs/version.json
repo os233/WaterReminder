@@ -1,8 +1,8 @@
 {
-  "versionCode": 5,
-  "versionName": "0.0.5",
-  "apkUrl": "https://github.com/os233/WaterReminder/releases/download/v0.0.5/WaterReminder_v0.0.5_release.apk",
-  "sha256": "318400873ae5d6aaa9d9aa873ef9dd02bb19b521508d3a5086c59f1d42b49321",
+  "versionCode": 6,
+  "versionName": "0.0.6",
+  "apkUrl": "https://github.com/os233/WaterReminder/releases/download/v0.0.6/WaterReminder_v0.0.6_release.apk",
+  "sha256": "bb37d63889a65469f13bcd95e8f28929c1bdcb09436130126c8a68317e11bb11",
   "changelog": "本次修复应用内更新「下载完装不上」—— 此前的更新流程必然失败，且不报任何错，建议所有用户更新。\n1. 修复下载完成后收不到系统广播：Android 13 及以上，安装器不会弹出、App 也没有任何提示，现在可以正常拉起安装界面\n2. 修复安装包下载到应用读不到的位置：此前落在公共「下载」目录，但本应用没有存储权限，读取失败导致更新静默中断；现改为应用自己的私有目录\n3. 下载失败时现在会明确提示「下载失败，请稍后重试」，不再毫无反应\n4. 注意：0.0.5 及更早版本的应用内更新会「下载完成但没有任何反应」—— 这正是本次修复的问题，而修复只能由新版本来执行。请到 Releases 页面手动下载本版 APK 覆盖安装（数据不会丢失）",
   "forceUpdate": false
 }
