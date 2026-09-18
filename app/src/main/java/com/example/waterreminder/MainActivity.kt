@@ -1,12 +1,10 @@
 package com.example.waterreminder
 
 import android.Manifest
-import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
-import android.os.PowerManager
 import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -85,7 +83,8 @@ class MainActivity : ComponentActivity() {
             alarmHelper.restoreAlarmIfNeeded()
         }
 
-        checkBatteryOptimization()
+        // 电池优化的提示不在启动时弹 Toast —— 用户看到提示也不知道去哪关。
+        // 改为在提醒卡片的设置弹窗里给出可点的入口（见 WaterReminderScreen.ReminderSection）。
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForegroundService(Intent(this, KeepAliveService::class.java))
@@ -148,15 +147,6 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 )
-            }
-        }
-    }
-
-    private fun checkBatteryOptimization() {
-        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            if (!powerManager.isIgnoringBatteryOptimizations(packageName)) {
-                Toast.makeText(this, "建议关闭电池优化，确保后台提醒稳定", Toast.LENGTH_LONG).show()
             }
         }
     }

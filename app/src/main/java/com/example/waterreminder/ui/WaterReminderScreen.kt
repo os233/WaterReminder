@@ -4,7 +4,10 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
+import android.os.PowerManager
+import android.provider.Settings
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
@@ -776,10 +779,21 @@ fun ReminderSection() {
     var dndStart by remember { mutableIntStateOf(helper.getDndStartHour()) }
     var dndEnd by remember { mutableIntStateOf(helper.getDndEndHour()) }
     var notificationsAllowed by remember { mutableStateOf(true) }
+    var batteryUnrestricted by remember { mutableStateOf(true) }
 
     LaunchedEffect(Unit) {
         selectedInterval = helper.getSavedInterval()
         notificationsAllowed = hasNotificationPermission(context)
+        batteryUnrestricted = isIgnoringBatteryOptimizations(context)
+    }
+
+    // 每次打开设置弹窗都重读一次 —— 用户可能刚从系统设置里改完回来，
+    // 不重读的话卡片会一直显示旧状态
+    LaunchedEffect(showDialog) {
+        if (showDialog) {
+            notificationsAllowed = hasNotificationPermission(context)
+            batteryUnrestricted = isIgnoringBatteryOptimizations(context)
+        }
     }
 
     val statusText = if (selectedInterval == 0) {
@@ -792,6 +806,10 @@ fun ReminderSection() {
     // 否则用户只会看到「设了提醒却从来不响」，无从判断问题在哪
     val notifText =
         if (selectedInterval != 0 && !notificationsAllowed) " · 通知权限未开启，提醒不会显示" else ""
+    // 未加入电池优化白名单时，系统（国产 ROM 尤其激进）会在后台清掉应用连同已排好的闹钟，
+    // 而 prefs 里的开关仍是「开启」—— 界面看着正常，实际再也不会响
+    val batteryText =
+        if (selectedInterval != 0 && !batteryUnrestricted) " · 未关闭电池优化，可能不提醒" else ""
 
     Card(
         onClick = { showDialog = true },
@@ -837,7 +855,7 @@ fun ReminderSection() {
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "$statusText$dndText$notifText",
+                        text = "$statusText$dndText$notifText$batteryText",
                         fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -970,6 +988,33 @@ fun ReminderSection() {
                             }
                         }
                     }
+
+                    // 被系统 force-stop 后闹钟会被一起清掉，而唯一的补排入口是「打开 App」——
+                    // 未加白名单时这是提醒失效的头号原因，光提示不给入口等于什么都没做
+                    if (!batteryUnrestricted) {
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+                        Text(
+                            text = "后台运行受限",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "系统可能在本应用退到后台后清掉它，连同已排好的提醒；" +
+                                "被清掉后只有重新打开本应用才会恢复，这期间不会有任何提醒。" +
+                                "关闭电池优化能明显降低被清的概率。",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        FilledTonalButton(
+                            onClick = { requestIgnoreBatteryOptimization(context) },
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
+                        ) {
+                            Text("关闭电池优化", fontSize = 14.sp)
+                        }
+                    }
                 }
             },
             confirmButton = {
@@ -1020,6 +1065,31 @@ private fun hasNotificationPermission(context: Context): Boolean {
     return ContextCompat.checkSelfPermission(
         context, Manifest.permission.POST_NOTIFICATIONS
     ) == PackageManager.PERMISSION_GRANTED
+}
+
+/**
+ * 是否已加入电池优化白名单（即系统不再限制它后台运行）。
+ * 未加入时系统可能在后台清掉应用连同已排好的闹钟，而 prefs 里的开关仍是「开启」——
+ * 界面看着正常，实际再也不会响。国产 ROM 尤其激进。
+ */
+private fun isIgnoringBatteryOptimizations(context: Context): Boolean {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return true
+    val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+    return powerManager.isIgnoringBatteryOptimizations(context.packageName)
+}
+
+/**
+ * 弹系统的「允许后台运行」对话框（即关闭电池优化）。
+ * 国产 ROM 的自启动 / 后台运行开关没有公开 API，只能靠文案引导用户自己去设置里找，
+ * 这里先把系统层面能做的做掉。
+ */
+private fun requestIgnoreBatteryOptimization(context: Context) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
+    val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+        data = Uri.parse("package:${context.packageName}")
+    }
+    // 部分 ROM 会拦这个 intent，不能让 Compose 的点击回调跟着崩
+    runCatching { context.startActivity(intent) }
 }
 
 /**

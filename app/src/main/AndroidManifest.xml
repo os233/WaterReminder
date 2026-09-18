@@ -8,6 +8,11 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+        <!-- 用于弹出系统的「允许后台运行」对话框（ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS）。
+             刻意不声明 ACCESS_NOTIFICATION_POLICY：2026-09-18 实测即使它 granted=true，
+             渠道的 mBypassDnd 仍是 false，对 setBypassDnd 没有任何帮助；
+             夜间也不该绕开用户自己开的系统免打扰 —— 该需求由应用内置的免打扰时段覆盖 -->
+        <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
         <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
         <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
         <!-- Android 15 起 dataSync 类型前台服务有 6 小时强制停止限制，
