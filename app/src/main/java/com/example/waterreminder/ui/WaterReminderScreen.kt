@@ -43,11 +43,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.example.waterreminder.data.DailyTotal
 import com.example.waterreminder.data.DrinkType
 import com.example.waterreminder.data.UserPrefs
@@ -785,6 +788,21 @@ fun ReminderSection() {
         selectedInterval = helper.getSavedInterval()
         notificationsAllowed = hasNotificationPermission(context)
         batteryUnrestricted = isIgnoringBatteryOptimizations(context)
+    }
+
+    // 每次回到前台都重读权限类状态：点「关闭电池优化」会跳到系统对话框，授权后返回
+    // 只触发 ON_RESUME —— LaunchedEffect(Unit) 与 LaunchedEffect(showDialog) 都不会重跑，
+    // 卡片会一直显示「未关闭电池优化」直到重启 App（2026-09-18 真机实测到的缺陷）
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                notificationsAllowed = hasNotificationPermission(context)
+                batteryUnrestricted = isIgnoringBatteryOptimizations(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     // 每次打开设置弹窗都重读一次 —— 用户可能刚从系统设置里改完回来，
