@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
-    <external-path name="downloads" path="Download/" />
+    <!-- 更新包下载到应用自己的外部私有目录（getExternalFilesDir(DIRECTORY_DOWNLOADS)）。
+         不能再用 <external-path> 指向公共 Downloads：应用没有存储权限，读不到那里的文件。 -->
+    <external-files-path name="downloads" path="Download/" />
 </paths>

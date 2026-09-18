@@ -163,14 +163,19 @@ class UpdateChecker(private val context: Context) {
      */
     fun downloadAndInstall(apkUrl: String, expectedSha256: String? = null) {
         val fileName = "waterreminder_update.apk"
-        val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        // 落在应用自己的外部私有目录，不能落公共 Downloads 目录：本应用没有（也不该申请）
+        // 任何存储权限，appops 里 READ/WRITE_EXTERNAL_STORAGE 都是 ignore，FUSE 会拒绝遍历
+        // /sdcard/Download —— 于是 File.exists() 恒为 false，下载成功了也会静默 return。
+        // （2026-09-18 真机实测：`run-as` 下 `test -e /sdcard/Download/xxx` 返回 NOEXIST。）
+        val downloadDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+            ?: return
         File(downloadDir, fileName).delete()
 
         val request = DownloadManager.Request(Uri.parse(apkUrl)).apply {
             setTitle("喝水提醒更新")
             setDescription("正在下载新版本...")
             setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-            setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
+            setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, fileName)
             setMimeType("application/vnd.android.package-archive")
         }
 
@@ -222,11 +227,19 @@ class UpdateChecker(private val context: Context) {
             }
         }
 
+        // 必须用 RECEIVER_EXPORTED：ACTION_DOWNLOAD_COMPLETE 由
+        // com.android.providers.downloads（appId 10060）发出 —— 既不是 root / system
+        // （AMS 的 canAccessUnexportedComponents 只放行 uid 0 与 1000），也不是本应用。
+        // 用 RECEIVER_NOT_EXPORTED 注册时 AMS 会直接判 "Exported Denial" 丢掉这个广播，
+        // 表现就是「下载完装不上」且没有任何报错（2026-09-18 真机实测：下载失败时
+        // 进程还活着却收不到广播，通知栏里 DM 自己发的「下载失败」是唯一线索）。
+        // 放开导出没有实际风险：下面先按 downloadId 过滤，再向 DownloadManager 复核状态，
+        // 最后还要比对 Manifest 里的 SHA-256 —— 伪造的广播最多让我们重查一次。
         ContextCompat.registerReceiver(
             context,
             receiver,
             IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
-            ContextCompat.RECEIVER_NOT_EXPORTED
+            ContextCompat.RECEIVER_EXPORTED
         )
     }
 
