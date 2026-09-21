@@ -221,9 +221,18 @@ GitHub Release 托管 APK asset，也是官网展示的唯一权威；Release �
 - Room 改实体**必须补 `Migration`**（当前 version 2，v1→v2 加了
   `drinkType` / `hydration`）；**不得使用 `fallbackToDestructiveMigration`** ——
   饮水记录是用户唯一的数据。
-- 提醒**必须**用 `setExactAndAllowWhileIdle` 调度，免打扰**必须**保留跨午夜
-  （`start > end`）的分支；保活服务**必须**保持 `specialUse` 类型前台服务，
-  不得换成 `dataSync`。
+- 提醒**必须**用 `setExactAndAllowWhileIdle` 调度。**不得**改成 `setAlarmClock` ——
+  2026-09-21 真机实测：后者虽然多一层「系统绝不会调整其传递时间」的承诺，但**同样挡不住
+  国产 ROM 自己的省电策略**（realme UI 会把后台应用的闹钟整体搬到 3 天后，`dumpsys alarm`
+  里 `whenElapsed` 被直接改写，换哪个 API 都一样），却要付出「状态栏常驻闹钟图标」的代价。
+  代价是实打实的、收益是零。免打扰**必须**保留跨午夜（`start > end`）的分支。
+- **不得**再引入常驻前台服务「保活」：进程活着就会被 ROM 冻结，冻结后闹钟投递被丢弃；
+  进程不在，系统才会为投递闹钟把它冷启动起来 —— 保活是反的（见 README「注意事项」）。
+- **OPPO 系（OPPO / realme / 一加）的后台白名单引导必须常驻显示**，
+  **不得**做成「检测到已开启就隐藏」—— 该状态在系统里**探测不到**（加与不加，`dumpsys`
+  里没有任何标志位变化），做成条件显示就会重演「条件永不成立、用户永远看不到」这个坑。
+  同理**不得**把 `isIgnoringBatteryOptimizations()` 的返回值当作「后台已放行」的判据：
+  2026-09-21 实测该值为 `true` 时闹钟照样被延后 3 天。
 - SharedPreferences 的 key 是已发布客户端的持久状态，**不得改名**（改名等于清空
   老用户的设置）：`user_prefs`、`water_reminder_prefs`、`update_prefs`。
 

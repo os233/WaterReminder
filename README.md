@@ -31,9 +31,13 @@ Kotlin + Jetpack Compose 编写，无广告、无账号、无联网上传 ——
 **提醒**
 - 按 1 / 2 / 3 小时间隔循环提醒，通知带提示音与震动
 - 免打扰时段可自定义起止时间，**支持跨午夜**（如 22:00 – 次日 08:00）
-- 开机自启，重启后自动恢复提醒
-- 常驻前台服务保活；被系统强制停止后，重新打开应用会按**原定时刻**补排闹钟（不会把提醒往后推）
-- 未关闭电池优化时，提醒卡片会直接提示「可能不提醒」，并在设置弹窗里给出关闭入口
+- 用 `setExactAndAllowWhileIdle` 调度提醒，能穿过 Doze 投递。
+  **不**用 `setAlarmClock`：它挡不住国产 ROM 自己的省电策略，却会让状态栏常驻一个闹钟图标
+- **不**靠常驻前台服务保活 —— 进程活着反而会被国产 ROM 冻结，冻结后投递被丢弃
+- 开机自启，重启后自动恢复提醒；被系统强制停止或覆盖安装后，重新打开应用会按**原定时刻**补排闹钟（不会把提醒往后推）
+- 未关闭电池优化时，提醒卡片会提示「可能不提醒」并给出关闭入口；
+  **OPPO 系（OPPO / realme / 一加）则常驻显示后台运行引导** —— 这类 ROM 会把后台应用的闹钟
+  整体延后（实测 3 天），只有系统里的「应用耗电管理 → 允许完全后台行为」+「自启动」能解除
 
 **历史**
 - 最近 7 天汇总：达标天数、日均饮水量
@@ -71,9 +75,16 @@ Kotlin + Jetpack Compose 编写，无广告、无账号、无联网上传 ——
 - Android 13+ 会弹出通知权限申请，允许后提醒才能显示
 - Android 12+ 需在系统设置中授予「闹钟和提醒」权限，否则提醒不准时
 - 部分国产 ROM 需手动允许自启动与后台运行，否则提醒会被杀掉
+- **OPPO 系（OPPO / realme / 一加）必做**：设置 → 电池 → **应用耗电管理** → 本应用 →
+  允许**完全后台行为**；以及设置 → 应用 → **自启动** → 允许。
+  2026-09-21 在 realme RMX3800 / realme UI 16 上实测：不加这两项时，退到后台的闹钟会被
+  整体搬到 **3 天后**（`dumpsys alarm` 里 `whenElapsed` 被直接改写），表现就是
+  「后台到点不提醒，回到应用才补上」；加上之后延后立刻消失。
+  该白名单状态**无法探测**（加与不加，`dumpsys` 里没有任何标志位变化），所以提醒设置弹窗里
+  常驻显示这两个入口，不会因为「看起来已放行」而隐藏
 - **建议关闭电池优化**：应用被系统强制停止（厂商的一键清理、智能省电）后，已排好的闹钟会被
-  一起清掉，而唯一的恢复入口是「重新打开应用」—— 这期间不会有任何提醒。提醒卡片会检测这一点，
-  并在设置弹窗里提供关闭电池优化的入口
+  一起清掉，而唯一的恢复入口是「重新打开应用」—— 这期间不会有任何提醒。非 OPPO 系机型的
+  提醒卡片会检测这一点，并在设置弹窗里提供关闭电池优化的入口
 
 **日常使用**
 
@@ -419,10 +430,10 @@ release 工作流需要在仓库 Settings → Secrets and variables → Actions 
 │   └── version.json             # 发布 Manifest：App 内更新与官网都读它（机器字段由 CI 写）
 ├── app/release/                 # 本地 APK 留档（已 gitignore，不入库；分发走 GitHub Releases）
 └── app/src/main/
-    ├── AndroidManifest.xml      # 权限、组件声明（保活服务为 specialUse 前台服务）
+    ├── AndroidManifest.xml      # 权限、组件声明（无前台服务）
     ├── res/                     # 图标、主题、colors、file_paths.xml
     └── java/com/example/waterreminder/
-        ├── MainActivity.kt          # 入口：通知 / 精确闹钟权限、保活服务、NavHost、更新弹窗
+        ├── MainActivity.kt          # 入口：通知 / 精确闹钟权限、NavHost、更新弹窗
         ├── WaterReminderApp.kt      # Application（空实现，仅在清单中声明）
         ├── data/
         │   ├── WaterRecord.kt       # Room 实体
@@ -434,12 +445,11 @@ release 工作流需要在仓库 Settings → Secrets and variables → Actions 
         │       ├── UpdateChecker.kt # 读 Pages 的 version.json 检查更新、下载并校验 SHA-256 后安装
         │       └── UpdateInfo.kt    # 一次可用更新的数据（对应 version.json 的顶层字段）
         ├── notification/
-        │   ├── AlarmManagerHelper.kt # 闹钟调度、免打扰判断、按原定时刻补排
+        │   ├── AlarmManagerHelper.kt # 闹钟调度（setExactAndAllowWhileIdle）、免打扰判断、按原定时刻补排
         │   ├── AlarmReceiver.kt     # 提醒触发、通知渠道（含震动）创建
-        │   ├── BootReceiver.kt      # 开机恢复
-        │   └── KeepAliveService.kt  # 前台保活服务
+        │   └── BootReceiver.kt      # 开机 / 覆盖安装后恢复
         └── ui/
-            ├── WaterReminderScreen.kt # 首页（含提醒设置与电池优化入口）
+            ├── WaterReminderScreen.kt # 首页（含提醒设置、电池优化入口、OPPO 系后台白名单引导）
             ├── HistoryScreen.kt     # 历史与统计
             └── theme/               # 主题配色
 ```
@@ -477,17 +487,32 @@ data class WaterRecord(
 - 换行符由 `.gitattributes` 统一：文本文件一律 LF 入库，`*.bat` 保持 CRLF。
   Linux CI 上 `./gradlew` 若是 CRLF 会直接报 `bash\r: No such file or directory`
 - Android 13+ 需要授予通知权限；Android 12+ 需要「闹钟和提醒」权限，否则提醒不准时
-- 保活服务使用 `specialUse` 类型前台服务（`dataSync` 在 Android 15 上有 6 小时强制停止限制）
+- **提醒一律走 `setExactAndAllowWhileIdle`（能穿过 Doze），并且刻意不引入常驻前台服务。**
+  曾经为「后台到点不响」改成 `setAlarmClock`，2026-09-21 真机实测证明**没用**：realme UI 会把
+  后台应用的闹钟**整体搬到 3 天后**（`dumpsys alarm` 里 `whenElapsed` 被直接改写，前台时又
+  原样搬回来），换哪个 API 都一样 —— 却要付出「状态栏常驻闹钟图标」的代价，所以回滚了。
+  不引入前台服务的理由：进程活着会被 ROM 冻结，冻结后投递被丢弃；进程不在时，系统才会为
+  投递闹钟把它冷启动起来，那条路径反而可靠。一句话：**保活是反的**。免打扰必须保留跨午夜
+  （`start > end`）分支。
+- **OPPO 系（OPPO / realme / 一加）必做**：设置 → 电池 → **应用耗电管理** → 本应用 → 允许
+  **完全后台行为**；以及设置 → 应用 → **自启动** → 允许。不加这两项时，退到后台的闹钟会被
+  延后 **3 天**（实测 `whenElapsed` 被改写为「请求时刻 + 3 天」），表现就是
+  「后台到点不提醒，回到应用才补上」—— 因为回到前台时 `whenElapsed` 被搬回正确值，已经
+  过期的闹钟立刻投递。加上之后延后立刻消失。
+  ⚠️ 该白名单状态**无法探测**（加与不加，`dumpsys` 里没有任何标志位变化，
+  `isIgnoringBatteryOptimizations()` 也一直是 `true`），所以弹窗里的入口**常驻显示**，
+  不做「已开启就隐藏」—— 那正是旧版电池优化提示失效的原因：条件永不成立，用户永远看不到。
 - 部分国产 ROM（realme / OPPO / 小米等）需要手动允许自启动与后台运行，否则提醒会被杀掉。
-  **最常见的一种表现是「从来没提醒过」**：ROM 在后台直接 force-stop 应用，这会清掉
+  **另一种表现是「从来没提醒过」**：ROM 在后台直接 force-stop 应用，这会清掉
   AlarmManager 里所有闹钟与 PendingIntent，且被 force-stop 的应用处于 `stopped` 状态，
   **任何广播都唤不醒它**（连 `BOOT_COMPLETED` 也不行），只能靠用户手动再打开一次应用。
-  前台服务挡不住这种清理。诊断方法：`adb shell dumpsys package <pkg> | grep stopped`
+  诊断方法：`adb shell dumpsys package <pkg> | grep stopped`
   与 `adb shell dumpsys activity exit-info <pkg>`（`reason=13` + `description=... due to o-stop`
   即为被系统强停）
-- 电池优化同理：未加入白名单时，Doze / App Standby 会推迟 `setExactAndAllowWhileIdle` 的
-  触发时刻。应用首页的提醒卡片会显示「未关闭电池优化，可能不提醒」，设置弹窗里提供
-  「关闭电池优化」按钮直接拉起系统对话框；不开也能用，只是提醒可能不准时
+- 电池优化：未加入白名单时 Doze / App Standby 仍会推迟闹钟。非 OPPO 系机型的提醒卡片会
+  显示「未关闭电池优化，可能不提醒」，弹窗里提供「关闭电池优化」按钮直接拉起系统对话框；
+  不开也能用，只是提醒可能不准时。**别把它当成「后台已放行」的判据** —— 2026-09-21 实测
+  该值已经是 `true` 时，闹钟照样被延后 3 天
 - APK 不再入库，改由 GitHub Release asset 分发（`.github/workflows/release.yml`）；
   `app/release/` 只作本地留档并已加入 `.gitignore`。迁移前 Pages 上的旧直链（`app/release/*.apk`）会随之失效
 - 仓库没有测试套件，**应用内更新的「下载 → 校验 → 安装」只能装到设备上手动验证**。
