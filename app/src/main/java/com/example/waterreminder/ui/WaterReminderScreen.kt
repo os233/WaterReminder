@@ -57,7 +57,6 @@ import com.example.waterreminder.data.UserPrefs
 import com.example.waterreminder.data.WaterRecord
 import com.example.waterreminder.data.WaterRecordDao
 import com.example.waterreminder.notification.AlarmManagerHelper
-import com.example.waterreminder.notification.KeepAliveService
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.Duration
@@ -784,6 +783,11 @@ fun ReminderSection() {
     var notificationsAllowed by remember { mutableStateOf(true) }
     var batteryUnrestricted by remember { mutableStateOf(true) }
 
+    // OPPO 系 ROM 的白名单状态在系统里**探测不到**（加与不加，dumpsys 里没有任何标志位变化），
+    // 所以这个入口只能常驻显示，不能做成「已开启就隐藏」—— 否则就是现有电池优化提示的翻版：
+    // 条件永不成立，用户永远看不到。
+    val isOplus = remember { isOplusDevice() }
+
     LaunchedEffect(Unit) {
         selectedInterval = helper.getSavedInterval()
         notificationsAllowed = hasNotificationPermission(context)
@@ -828,6 +832,10 @@ fun ReminderSection() {
     // 而 prefs 里的开关仍是「开启」—— 界面看着正常，实际再也不会响
     val batteryText =
         if (selectedInterval != 0 && !batteryUnrestricted) " · 未关闭电池优化，可能不提醒" else ""
+    // OPPO 系的延后机制探测不到，只能常驻给一句提醒；用「若…请…」的说法，
+    // 不宣称「已受限」（用户很可能已经加过白名单了）
+    val oplusText =
+        if (isOplus && selectedInterval != 0) " · 若后台不提醒，请开后台运行权限" else ""
 
     Card(
         onClick = { showDialog = true },
@@ -873,7 +881,7 @@ fun ReminderSection() {
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "$statusText$dndText$notifText$batteryText",
+                        text = "$statusText$dndText$notifText$batteryText$oplusText",
                         fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -1008,29 +1016,57 @@ fun ReminderSection() {
                     }
 
                     // 被系统 force-stop 后闹钟会被一起清掉，而唯一的补排入口是「打开 App」——
-                    // 未加白名单时这是提醒失效的头号原因，光提示不给入口等于什么都没做
-                    if (!batteryUnrestricted) {
+                    // 未加白名单时这是提醒失效的头号原因，光提示不给入口等于什么都没做。
+                    // OPPO 系另有「延后后台闹钟 3 天」的机制（2026-09-21 实测），
+                    // 且其白名单状态探测不到，所以对这类 ROM 一律常驻入口。
+                    if (isOplus || !batteryUnrestricted) {
                         HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
                         Text(
-                            text = "后台运行受限",
+                            text = if (isOplus) "让提醒在后台也能响" else "后台运行受限",
                             fontSize = 15.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "系统可能在本应用退到后台后清掉它，连同已排好的提醒；" +
-                                "被清掉后只有重新打开本应用才会恢复，这期间不会有任何提醒。" +
-                                "关闭电池优化能明显降低被清的概率。",
+                            text = if (isOplus) {
+                                "本机系统会延后后台应用的提醒（实测最多延后 3 天），" +
+                                    "到点不会响，只有重新打开本应用才会补上。请到系统设置里放行：" +
+                                    "「应用耗电管理」里点进本应用，打开「允许完全后台行为」；" +
+                                    "再到「设置 → 应用 → 自启动」里允许本应用。"
+                            } else {
+                                "系统可能在本应用退到后台后清掉它，连同已排好的提醒；" +
+                                    "被清掉后只有重新打开本应用才会恢复，这期间不会有任何提醒。" +
+                                    "关闭电池优化能明显降低被清的概率。"
+                            },
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Spacer(modifier = Modifier.height(10.dp))
-                        FilledTonalButton(
-                            onClick = { requestIgnoreBatteryOptimization(context) },
-                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
-                        ) {
-                            Text("关闭电池优化", fontSize = 14.sp)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (isOplus) {
+                                // 「自启动管理」那一页要 OPLUS 签名级权限，第三方应用拉不起来，
+                                // 所以它只写在文案里；这里给的两个入口都是实测能打开的
+                                FilledTonalButton(
+                                    onClick = { openOplusPowerConsumption(context) },
+                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                                ) {
+                                    Text("应用耗电管理", fontSize = 14.sp)
+                                }
+                                FilledTonalButton(
+                                    onClick = { openAppSettings(context) },
+                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                                ) {
+                                    Text("应用设置", fontSize = 14.sp)
+                                }
+                            } else {
+                                FilledTonalButton(
+                                    onClick = { requestIgnoreBatteryOptimization(context) },
+                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
+                                ) {
+                                    Text("关闭电池优化", fontSize = 14.sp)
+                                }
+                            }
                         }
                     }
                 }
@@ -1077,6 +1113,52 @@ private fun HourPicker(label: String, hour: Int, onPick: (Int) -> Unit) {
     }
 }
 
+/**
+ * 是否是 OPPO 系（OPPO / realme / 一加）。
+ *
+ * 这几家的 ROM 会把**后台应用的闹钟整体搬到 3 天后**（2026-09-21 在 realme RMX3800 /
+ * Android 16 / realme UI 16 上实测：`dumpsys alarm` 里 `whenElapsed` 被直接改写，
+ * 前台时又原样搬回来），表现就是「后台到点不提醒，回到 App 才补上」。
+ * 它与用哪个闹钟 API 无关（`setAlarmClock` 也挡不住），唯一解药是系统里的白名单 ——
+ * 见 [openOplusPowerConsumption] / [openOplusAutoStart]。
+ */
+private fun isOplusDevice(): Boolean {
+    val brand = (Build.BRAND + Build.MANUFACTURER).lowercase()
+    return brand.contains("oppo") || brand.contains("realme") || brand.contains("oneplus")
+}
+
+/**
+ * 跳「应用耗电管理」。点进本应用后可开「允许完全后台行为」——
+ * 2026-09-21 真机实测：这一项 + 自启动打开后，后台闹钟的 3 天延后立刻消失。
+ *
+ * ⚠️ **不能用组件名直跳**：`com.oplus.battery/com.oplus.powermanager.fuelgaue.PowerConsumptionActivity`
+ * 声明了 `oplus.permission.OPLUS_COMPONENT_SAFE`（OPLUS 签名级权限），第三方应用显式启动会被
+ * `SecurityException: Permission Denial` 拒掉 —— 实测连 shell（uid 2000）都起不来。
+ * 改用标准 action `ACTION_POWER_USAGE_SUMMARY`：它解析到的**正是同一个页面**，且不受该权限限制。
+ */
+private fun openOplusPowerConsumption(context: Context) {
+    val intent = Intent(Intent.ACTION_POWER_USAGE_SUMMARY).apply {
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    runCatching { context.startActivity(intent) }
+        // 个别 ROM 没有这个页面时至少把应用详情页给出来，别让点击静默无效
+        .onFailure { openAppSettings(context) }
+}
+
+/**
+ * 跳本应用的系统详情页。
+ *
+ * 「自启动管理」（`com.oplus.battery/...startupapp.view.StartupAppListActivity`）同样要
+ * OPLUS 签名级权限，第三方应用拉不起来，所以那一项只能在文案里写路径、给不出按钮。
+ */
+private fun openAppSettings(context: Context) {
+    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+        data = Uri.parse("package:${context.packageName}")
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    runCatching { context.startActivity(intent) }
+}
+
 /** Android 13+ 通知是运行时权限；被拒后闹钟照常触发，但通知会被系统静默丢弃 */
 private fun hasNotificationPermission(context: Context): Boolean {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return true
@@ -1119,14 +1201,7 @@ private fun setReminder(context: Context, hours: Int): Boolean {
     val helper = AlarmManagerHelper(context)
     if (hours == 0) {
         helper.cancelAlarm()
-        context.stopService(Intent(context, KeepAliveService::class.java))
         return true
     }
-    if (!helper.setRepeatingAlarm(hours)) return false
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-        context.startForegroundService(Intent(context, KeepAliveService::class.java))
-    } else {
-        context.startService(Intent(context, KeepAliveService::class.java))
-    }
-    return true
+    return helper.setRepeatingAlarm(hours)
 }

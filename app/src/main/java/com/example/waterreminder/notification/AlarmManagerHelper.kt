@@ -68,7 +68,18 @@ class AlarmManagerHelper(private val context: Context) {
         return true
     }
 
-    /** 按指定时刻排闹钟，并把「原定触发时刻」记进 prefs —— 补排时靠它还原，不重新起算 */
+    /**
+     * 按指定时刻排闹钟，并把「原定触发时刻」记进 prefs —— 补排时靠它还原，不重新起算。
+     *
+     * 用 `setExactAndAllowWhileIdle`：它已经能穿过 Doze 投递。更「强」的 `setAlarmClock`
+     * 经 2026-09-21 真机实测**同样挡不住国产 ROM 自己的省电策略** —— realme UI 会把后台应用的
+     * 闹钟整体搬到 3 天后（`dumpsys alarm` 里 `whenElapsed` 被直接改写，换哪个 API 都一样），
+     * 却要付出「状态栏常驻闹钟图标」的代价。**这个代价是实打实的，收益是零，别改回去。**
+     *
+     * 真正解决后台延后的是系统里的白名单（realme / OPPO：「应用耗电管理 → 允许完全后台行为」
+     * +「自启动」，实测打开后延后立刻消失）。它没有公开 API、也探测不到，
+     * 应用侧只能在界面上常驻引导 —— 见 `WaterReminderScreen.ReminderSection`。
+     */
     private fun armAt(triggerTime: Long, intervalHours: Int) {
         val intent = Intent(context, AlarmReceiver::class.java).apply {
             putExtra("interval_hours", intervalHours)
@@ -78,19 +89,7 @@ class AlarmManagerHelper(private val context: Context) {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            alarmManager.setExactAndAllowWhileIdle(
-                AlarmManager.RTC_WAKEUP,
-                triggerTime,
-                pendingIntent
-            )
-        } else {
-            alarmManager.setExact(
-                AlarmManager.RTC_WAKEUP,
-                triggerTime,
-                pendingIntent
-            )
-        }
+        alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent)
 
         prefs.edit().apply {
             putInt(KEY_INTERVAL, intervalHours)
@@ -127,6 +126,10 @@ class AlarmManagerHelper(private val context: Context) {
         if (!prefs.getBoolean(KEY_ENABLED, false)) return
         val interval = prefs.getInt(KEY_INTERVAL, 1)
         if (interval <= 0) return
+        // 权限被拒时不能进 armAt：setExactAndAllowWhileIdle 同属精确闹钟 API，没有
+        // SCHEDULE_EXACT_ALARM 时照样抛 SecurityException，而调用方之一是
+        // BroadcastReceiver，抛出去就是崩溃
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !alarmManager.canScheduleExactAlarms()) return
 
         val scheduledAt = prefs.getLong(KEY_NEXT_TRIGGER, 0L)
         if (scheduledAt > System.currentTimeMillis()) {

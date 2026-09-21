@@ -25,6 +25,9 @@ class AlarmReceiver : BroadcastReceiver() {
         private const val CHANNEL_ID = "water_reminder_channel_v2"
         private const val LEGACY_CHANNEL_ID = "water_reminder_channel"
 
+        /** 已移除的常驻前台服务用过的渠道；留着会在通知设置里留一个永远不会响的死渠道 */
+        private const val KEEP_ALIVE_CHANNEL_ID = "keep_alive_channel"
+
         /** 震动节奏：立即、震 500ms、停 200ms、再震 500ms */
         private val VIBRATION_PATTERN = longArrayOf(0, 500, 200, 500)
     }
@@ -48,6 +51,10 @@ class AlarmReceiver : BroadcastReceiver() {
             // 换 ID 的迁移：旧渠道留着会让通知设置里出现两个同名的「喝水提醒」
             if (notificationManager.getNotificationChannel(LEGACY_CHANNEL_ID) != null) {
                 notificationManager.deleteNotificationChannel(LEGACY_CHANNEL_ID)
+            }
+            // 同上：常驻前台服务已移除，它用过的渠道一并清掉
+            if (notificationManager.getNotificationChannel(KEEP_ALIVE_CHANNEL_ID) != null) {
+                notificationManager.deleteNotificationChannel(KEEP_ALIVE_CHANNEL_ID)
             }
 
             val channel = NotificationChannel(

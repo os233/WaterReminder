@@ -14,10 +14,6 @@
              夜间也不该绕开用户自己开的系统免打扰 —— 该需求由应用内置的免打扰时段覆盖 -->
         <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
         <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-        <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-        <!-- Android 15 起 dataSync 类型前台服务有 6 小时强制停止限制，
-             常驻保活服务改用 specialUse 类型（无时长限制） -->
-        <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
         <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <application
@@ -50,18 +46,9 @@
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
-
-        <service
-            android:name=".notification.KeepAliveService"
-            android:enabled="true"
-            android:exported="false"
-            android:foregroundServiceType="specialUse">
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="常驻轻量通知以保障按小时触发的喝水提醒闹钟在后台可靠运行" />
-        </service>
 
         <provider
             android:name="androidx.core.content.FileProvider"

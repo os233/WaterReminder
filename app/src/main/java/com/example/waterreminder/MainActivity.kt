@@ -43,7 +43,6 @@ import com.example.waterreminder.data.remote.UpdateCheckResult
 import com.example.waterreminder.data.remote.UpdateChecker
 import com.example.waterreminder.data.remote.UpdateInfo
 import com.example.waterreminder.notification.AlarmManagerHelper
-import com.example.waterreminder.notification.KeepAliveService
 import com.example.waterreminder.ui.HistoryScreen
 import com.example.waterreminder.ui.WaterReminderScreen
 import com.example.waterreminder.ui.theme.WaterReminderTheme
@@ -85,12 +84,6 @@ class MainActivity : ComponentActivity() {
 
         // 电池优化的提示不在启动时弹 Toast —— 用户看到提示也不知道去哪关。
         // 改为在提醒卡片的设置弹窗里给出可点的入口（见 WaterReminderScreen.ReminderSection）。
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(Intent(this, KeepAliveService::class.java))
-        } else {
-            startService(Intent(this, KeepAliveService::class.java))
-        }
 
         val database = WaterDatabase.getDatabase(this)
         val dao = database.waterRecordDao()
