@@ -1,6 +1,6 @@
 name: CI
 
-# 只做质量门禁：版本号一致性 + 编译。不碰签名、不发版，所以 fork 的 PR 也能安全跑。
+# 只做质量门禁：Manifest 校验 + 编译。不碰签名、不发版，所以 fork 的 PR 也能安全跑。
 #
 # 触发：push 到 master、任何 PR、以及手动。
 
@@ -20,7 +20,7 @@ jobs:
       - uses: actions/checkout@v7
 
       # 放在最前面：纯文本校验，秒级失败，不用等 JDK / SDK
-      - name: 校验版本号一致性
+      - name: Manifest 校验
         run: python3 scripts/sync_version.py --check
 
       # README 已说明：Gradle 8.11.1 只支持到 Java 23，固定用 17

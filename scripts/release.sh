@@ -63,13 +63,13 @@ mkdir -p app/release
 cp -f "$APK_SRC" "app/release/$APK_NAME"
 echo "已归档：app/release/$APK_NAME"
 
-# ── 4. 校验版本文件 ───────────────────────────────────────────────
+# ── 4. Manifest 校验 ──────────────────────────────────────────────
 # 刻意**不**在这里同步 docs/version.json 的机器字段（versionCode / versionName / apkUrl /
 # sha256）：那会把 Manifest 指到一个还没上传的 asset 上，老客户端点更新直接 404。
 # 机器字段由 CI 在 Release 建好之后写回（见 .github/workflows/release.yml），
 # 本地只负责把 changelog 手写进去 —— 所以这里只校验，不改文件。
 echo
-echo "▶ 校验版本文件…"
+echo "▶ Manifest 校验…"
 "$PY" scripts/sync_version.py --check
 
 # ── 5. 签名自检（尽力而为，找不到工具就跳过）───────────────────────

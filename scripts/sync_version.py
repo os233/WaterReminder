@@ -4,7 +4,7 @@
 版本号写在三个地方，历史上出现过脱节（版本文件停在旧版本，导致应用内更新永远不触发）：
 
   1. app/build.gradle.kts              —— 唯一权威来源
-  2. docs/version.json                 —— 老客户端过渡 + 官网兜底数据源，见下
+  2. docs/version.json                 —— 发布 Manifest：所有客户端唯一的更新源，见下
   3. app/release/output-metadata.json  —— 归档产物的元数据
 
 关于 docs/version.json：它是**发布 Manifest** —— 机器字段由 CI 在发版时写回，
@@ -14,8 +14,12 @@
      （比 versionCode），并取 apkUrl 与 sha256。这是所有版本的唯一更新源，不走 GitHub
      Releases API —— 未认证 API 只有 60 次/小时且配额按出口 IP 共享，被别人的请求用光后
      更新检查会静默失败。
-  ② 官网（docs/assets/site.js）的静态兜底数据源：Releases API 失败时官网退回来读它。
-     所以 changelog 要认真写 —— API 失败时官网直接拿它当更新说明显示。
+  ② 官网（docs/assets/site.js）：首页与下载页**只**从它取「期望的 versionName」，再去
+     GET /releases/tags/v<versionName> 证实这个版本真的存在（且挂着 .apk asset）才显示 ——
+     查不到就显示「尚无可下载的安装包」并指向 Releases 页。**不得**在查不到 Release 时
+     退回去显示清单里的版本号与 apkUrl：那是死链，而且那个版本并不存在。
+     唯一的例外是更新日志页 —— API 失败或列表为空时读它渲染一条带「本站清单」标签的
+     兜底记录。所以 changelog 要认真写，API 失败时官网直接拿它当更新说明显示。
 
 ⚠️ 字段结构是**兼容契约**：已发布的旧客户端按顶层字段反序列化这个文件，
    缺字段会被静默当成 0/null（表现为「永远没有更新」）。只能新增，
@@ -227,7 +231,7 @@ def cmd_check() -> int:
             print("  -", p)
         return 1
 
-    print("版本号校验通过。")
+    print("Manifest 校验通过。")
     return 0
 
 

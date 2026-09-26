@@ -209,7 +209,7 @@ Release 已经建好、Manifest 却没更新 —— 所有客户端永远收不�
 这个窗口就不存在了 —— 代价只是「推完 tag 等 CI 跑完，App 才开始提示更新」。
 
 `scripts/release.sh` 依次做：校验 `keystore.properties` 存在 → `./gradlew assembleRelease` →
-产物归档到 `app/release/`（本地留档，不入库）→ 版本号一致性校验 → apksigner 签名自检
+产物归档到 `app/release/`（本地留档，不入库）→ Manifest 校验 → apksigner 签名自检
 （找不到工具就跳过并提示）。**它不会自动 commit / push** —— 发布是对外动作，留给人确认。
 
 **务必始终使用同一个密钥库**。签名不一致会导致老用户无法覆盖安装，只能卸载重装。
@@ -320,23 +320,28 @@ App 读 `https://os233.github.io/WaterReminder/version.json` —— Pages 上的
 
 ⚠️ 因此**不要删这个文件**，也不要删 `scripts/sync_version.py` 里的 `VERSION_JSON`。
 
-### 版本号一致性校验
+### Manifest 校验
 
 ```bash
 python scripts/sync_version.py --check    # 只校验不写文件；CI 也跑这个
 python scripts/sync_version.py --expect-tag v<版本号>    # 断言 tag 与 versionName 一致；发版工作流用
 ```
 
-校验的不变量：
+`--check` 校验的不变量：
 
-- `docs/version.json` 的 versionCode **不能比源码还新**（多半是升了它却忘了升 `app/build.gradle.kts`）
-- `apkUrl` 必须是 https，且文件名必须与 versionName 匹配
+- `docs/version.json` 的 `versionCode` 必须是正整数，且**不能比源码还新**
+  （多半是升了它却忘了升 `app/build.gradle.kts`）
+- `versionName` 必须是 `x.y.z` 形态
+- `apkUrl` 必须是 https，且文件名必须与 `versionName` 匹配
+  （`WaterReminder_v<versionName>_release.apk`）；指向 Pages 时还要求 `app/release/` 下真有这个文件
 - `sha256` 非空时必须是 64 位小写十六进制（App 只认这个格式，写错会被当成「没有摘要」）
 - `sha256` 缺失不算失败：本地发版时它是空的，CI 在 Release 建好后写回真实值
+- `app/release/output-metadata.json` 存在时，它的版本号必须与 Manifest 一致
 - `apkUrl` 指向 Releases 时脚本只给提示，**无法校验 asset 是否已上传** —— 不过发版流程里
   这一步由 CI 保证（先上传 asset，再改 Manifest），不需要人工确认
 
-允许 `docs/version.json` 落后于源码 —— 开发中先升源码版本号是正常的。
+**它不要求 Manifest 的版本等于源码版本** —— 允许落后（开发中先升源码版本号是正常的），
+只拦「超前」这一种：Manifest 比源码新，客户端就会去下载一个还没构建出来的版本。
 
 ### GitHub Pages
 
@@ -379,8 +384,8 @@ Pages 不只是展示 —— **App 的更新检查也读它**（`/version.json`�
 
 | 工作流 | 触发 | 做什么 |
 | --- | --- | --- |
-| `.github/workflows/ci.yml` | push 到 master / 任何 PR / 手动 | 版本号校验 + `assembleDebug`（lint 目前只报告不拦截）。不需要任何密钥，fork 的 PR 也能安全跑 |
-| `.github/workflows/release.yml` | push 形如 `v1.4.0` 的正式 tag 或 `v1.4.0-beta.1` 的预发布 tag；手动触发保留，用于失败重跑（会覆盖已有 asset） | 校验 tag 与 versionName 一致 → 判定发布通道 → 构建签名 APK → 校验签名 → 创建 Release 并上传 asset（预发布标 `--prerelease`）→ 核对 asset 的 SHA-256 与本地产物一致 → 正式版把机器字段写回 `docs/version.json` 并推 master（预发布跳过这一步） |
+| `.github/workflows/ci.yml` | push 到 master / 任何 PR / 手动 | Manifest 校验 + `assembleDebug`（lint 目前只报告不拦截）。不需要任何密钥，fork 的 PR 也能安全跑 |
+| `.github/workflows/release.yml` | push 形如 `v1.4.0` 的正式 tag 或 `v1.4.0-beta.1` 的预发布 tag；手动触发保留，用于失败重跑（会覆盖已有 asset） | 校验 tag 与 versionName 一致 → 判定发布通道 → 构建签名 APK → 校验签名 → 创建 Release 并上传 asset（预发布标记为 prerelease）→ 核对 asset 的 SHA-256 与本地产物一致 → 正式版把机器字段写回 `docs/version.json` 并推 master（预发布跳过这一步） |
 
 tag 过滤器是两条 glob：`v[0-9]*.[0-9]*.[0-9]*`（正式）与 `v[0-9]*.[0-9]*.[0-9]*-*`（预发布）。
 两条都显式列出 —— 图省事写成 `v*` 的话，`vfoo` 这类无关 tag 也会拉起一次 workflow，
@@ -391,21 +396,24 @@ tag 过滤器是两条 glob：`v[0-9]*.[0-9]*.[0-9]*`（正式）与 `v[0-9]*.[0
 第二条只是把这个意图显式写出来，**不是冗余，别删**。历史上这里曾经是一条 `!v*-*` 排除项，
 那正是「推 beta tag 什么都不发生」的原因。
 
-**预发布**（tag 形如 `v0.0.1-beta.1`）与正式发版的差别只有两处，其余步骤完全一致：
+**预发布**（tag 形如 `v0.0.1-beta.1`）与正式发版的差别有三处，其余步骤完全一致：
 
 | | 正式 tag | 预发布 tag |
 | --- | --- | --- |
-| Release 标记 | 普通 Release | `--prerelease` |
+| Release 标记 | 普通 Release | 标记为 prerelease（工作流走 REST API 的 `prerelease` 字段） |
 | `docs/version.json` | CI 写回 | **完全不动** |
+| Release 说明来源 | Manifest 的 `changelog` | **tag 的注释**（`git tag -a -m "<正文>"`） |
 | 官网首页 / 下载页 | 显示这一版 | 不显示（首页/下载页按 Manifest 的 `versionName` 查 tag，而 Manifest 不动，查的还是上一个正式版） |
 | 官网更新日志页 | 列出 | 列出，带「预发布」标签 |
 | App 内更新 | 会提示 | 不会提示（Manifest 没变） |
+
+前三行是机制差别，后三行是它们的表现 —— 所以「要不要动 Manifest」这一条决定了后面三行的全部行为。
 
 ⚠️ **预发布绝不能写回 Manifest**：Manifest 是所有客户端（含已发布的正式版）唯一的更新源，
 写进去等于把 beta 推给全部用户。所以预发布只存在于 Releases 里，只有主动去 GitHub 下载的人
 才装得到 —— 这也是它安全的原因。
 
-⚠️ 预发布用 `--prerelease` 而不是「建好再手改」：一旦某个 Release 没被标成 prerelease，
+⚠️ 预发布必须标记为 prerelease（当前工作流通过 GitHub API 设置）而不是「建好再手改」：一旦某个 Release 没被标成 prerelease，
 它就会成为 `/releases/latest` 的候选，beta 会被顶到官网首页的下载按钮上。
 
 release 工作流需要在仓库 Settings → Secrets and variables → Actions 配好
@@ -415,8 +423,9 @@ release 工作流需要在仓库 Settings → Secrets and variables → Actions 
 ## 项目结构
 
 ```
-├── AGENTS.md                    # 在本仓库工作的 AI 代理必须遵守的约束（边界、发版规则、环境版本）
-├── .github/workflows/           # CI：ci.yml（版本号校验 + 编译）、release.yml（构建签名 APK 发到 Releases）
+├── AGENTS.md                    # AI 代理必须遵守的仓库硬边界与技术约束
+├── programs.md                  # AI 代理的职责原则、任务处理方式与汇报要求
+├── .github/workflows/           # CI：ci.yml（Manifest 校验 + 编译）、release.yml（构建签名 APK 发到 Releases）
 ├── build.gradle.kts             # AGP / Kotlin / KSP 插件版本；app/build.gradle.kts 里是版本号与依赖
 ├── gradle/ · gradlew            # Gradle wrapper（8.11.1，只走 wrapper）
 ├── scripts/

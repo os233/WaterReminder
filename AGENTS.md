@@ -1,9 +1,7 @@
 # AGENTS.md
 
-本文件约束在本仓库工作的 AI 代理。
-
-核心原则：**完整完成请求的任务，让真实需求驱动复杂度。** 不做投机性防御，不搞范围蔓延，
-不用额外流程表演勤奋。以下是这些原则在本仓库的具体化。
+本文件记录在本仓库工作的 AI 代理必须遵守的硬边界与技术约束。
+代理的职责原则、任务处理方式和汇报要求见 [programs.md](programs.md)。
 
 ## 怎么读这份文件
 
@@ -15,32 +13,6 @@
   「本仓库硬边界」里涉及密钥与隐私的条款**。真遇到冲突，先说明再动。
 - 本文件与 `README.md` 有重叠时：这里是**约束**，README 是**解释**。
   两者不一致，按本文件执行，并把 README 一并改对。
-
-## 停止阶梯
-
-选实现、加机制、扩验证时，按此阶梯决策：
-
-1. **先弄清当前职责**：请求的结果、明确边界、必须保留的既有保证（见「代码里的
-   既有保证」）。改动前追踪受影响的调用方与失败路径，数据、测试、文档的连带
-   修改一并完成。「计划」或「更简单的子集」不等于完成请求。
-2. **从直接方案开始**：优先复用项目现有代码、平台 / 标准库能力、已装依赖
-   （如 OkHttp、Room）。比较真实行为与失败处理即可，不必穷举生态。
-3. **只为具体缺口扩展**：说清直接方案覆盖不了哪个输入、消费者或失败路径，
-   在负责该问题的层级补齐。仅凭「未来可能需要」不构成理由。
-4. **按实际效果评判防御**：说清机制检测什么、拒绝 / 恢复 / 诊断改变什么。
-   没有落地价值的不加；掩盖失败、重复副作用、妨碍正常使用的防御要修，
-   哪怕修复要加代码。
-5. **验证后收尾**：用「项目检查」列出的既有检查验证受影响的行为。结果存在、
-   证据支持、无已知范围内阻塞，即结束。不要再加一轮审计循环来满足本文件。
-
-## 任务模式
-
-- `review` / `answer` / `monitor`：**只读**。除非用户明确授权，不得改动任何文件。
-- `change`：只做请求的工作及其必要后果。不得重构无关代码，不得顺手「优化」。
-- 提交前必须看 `git status`：只提交任务相关文件。不相关的未跟踪残留
-  （IDE 生成的配置、查 CI / 接口的临时 JSON 等）不得被 `git add -A` 扫进提交；
-  一次性草稿用完即删，会反复出现的本地文件进 `.gitignore`。
-- 必要工作不得越过明确的文件锁或更窄的边界；确需越界，先说明再动。
 
 ## 本仓库硬边界
 
@@ -74,15 +46,11 @@
 - `versionCode` 必须严格递增（脚本只能防版本文件回退，跨版本递增由发版人保证），
   且与 `versionName` **同序** —— Manifest 的 `apkUrl` 文件名由 `versionName` 拼出，
   两者不同序会让客户端拿到一个对不上的下载地址。
-- **例外：0.0.1 重置（2026-09-15，一次性）**。所有 Release 与 tag 已清空，版本号从
-  `0.0.1` 重新起算 —— 所以 `versionCode` 是**从 1 重启**，不是从 8 继续递增；
-  `app/build.gradle.kts` 与 `docs/version.json` 里的 `versionCode = 1` 是当前正确状态，
-  不得「修」回 7 / 8。自本次之后恢复上面的「严格递增」约束。
-  这次还必须**手工**把 Manifest 的机器字段降到 0.0.1（且必须在推 tag 前就落在 master 上），
-  否则 `release.yml` 的 `sync_version.py --check` 会因「Manifest 比源码新」拦死构建 ——
-  这是对下一条「机器字段不得手改」的一次性豁免。
-  已确认并接受的代价：已装 1.4.0（`versionCode = 7`）的客户端会被判为最新而永久收不到
-  更新，且 Android 拒绝降级安装（`INSTALL_FAILED_VERSION_DOWNGRADE`），只能卸载重装。
+- **历史记录：0.0.1 重置（2026-09-15，一次性）**。当时 Release 与 tag 已清空，版本号从
+  `0.0.1` 重新起算，曾一次性豁免严格递增及 Manifest 机器字段只能由 CI 写回的规则。
+  此例外已结束；当前及后续版本按上面的严格递增规则执行，Manifest 机器字段仍只能由 CI 写回。
+  已接受的兼容影响是：重置时已装 `1.4.0`（`versionCode = 7`）的客户端不能收到低于其版本码的更新，
+  Android 也拒绝降级安装（`INSTALL_FAILED_VERSION_DOWNGRADE`），需卸载重装。
 - `docs/version.json` 是**发布 Manifest**。它的机器字段
   （`versionCode` / `versionName` / `apkUrl` / `sha256`）**只能由 CI 在 Release 建好后
   写回**，不得手改；唯一手写的是 `changelog` 与 `forceUpdate`。
@@ -96,13 +64,13 @@
   两者都是对外动作，必须分别确认，顺序见 README「发布流程」。
 - **预发布（beta）**的 tag 形如 `v<versionName>-<后缀>`（如 `v0.0.1-beta.1`），
   `app/build.gradle.kts` 的 `versionName` 必须带同样的后缀 —— `sync_version.py --expect-tag`
-  要求两者严格相等，而 APK 文件名由 `versionName` 拼出。预发布与正式发版的差别只有两处：
-  ① Release 必须标 `--prerelease`（不标它就会被当成正式 Release 列进 Releases 列表，
+  要求两者严格相等，而 APK 文件名由 `versionName` 拼出。预发布与正式发版有三处差别：
+  ① Release 必须标记为 prerelease（当前工作流通过 GitHub API 的 `prerelease` 字段设置；不标记就会被当成正式 Release 列进 Releases 列表，
   也会让 `version.json` 指向的那个 tag 被换掉 —— 官网首页的下载按钮是拿 tag 去查的，
   查错了就等于把 beta 顶上去）；② **不得写回 `docs/version.json`** ——
   Manifest 是所有客户端（含已发布的正式版）唯一的更新源，写进去等于把 beta 推给全部用户；
   ③ 预发布自己的更新说明写在 **tag 的注释里**（`git tag -a v0.0.2-beta.1 -m "<正文>"`），
-  `release.yml` 的「判定发布通道」步骤把它导出到 `steps.channel.outputs.notes`，
+  `release.yml` 的「判定发布通道」步骤把注释文件路径导出到 `steps.channel.outputs.notesFile`，
   「创建 Release」步骤据此选 body 源（预发布用 tag 注释，正式版用 Manifest 的 `changelog`）。
   这是「预发布不动 Manifest」与「beta 也需要说明」之间唯一不违反兼容契约的折中：
   正文存在 tag 对象里，不碰任何已发布客户端读的文件。
@@ -145,8 +113,9 @@ App 内更新是本项目唯一在运行时依赖外部的链路，**改坏了�
   只放行 uid 0 与 1000）也不是本应用，AMS 会按 `Exported Denial` 直接丢弃它，
   表现就是「下载完装不上」且没有任何报错。放开导出没有实际风险：接收器先按
   `downloadId` 过滤，再向 `DownloadManager` 复核状态，最后还要比对 SHA-256。
-- **任何失败都只返回 `Failed`**：断网、HTTP 非 2xx、JSON 结构不符、字段非法 ——
-  不抛异常、不弹错误提示、不影响 App 其余功能。
+- **更新信息检查的失败只返回 `Failed`**：断网、HTTP 非 2xx、JSON 结构不符、字段非法时，
+  不抛异常、不弹错误提示，也不影响 App 其余功能。下载或安装阶段的失败按相应规则提示用户；
+  摘要校验失败时删除安装包并提示重试。
 - 自动检查**必须只在真问到结果时才写** `update_prefs.last_check_at`（12 小时节流），
   否则一次断网会把重试也压掉 12 小时。
 
@@ -154,8 +123,8 @@ App 内更新是本项目唯一在运行时依赖外部的链路，**改坏了�
 
 - 换行符以 `.gitattributes` 为准：文本一律 LF 入库，`*.bat` 为 CRLF；
   尤其 `gradlew` 必须保持 LF（CRLF 会让 Linux CI 直接挂）。
-- `gradlew` 与 `scripts/release.sh` 的 exec 位（100755）在 `git reset` 后会丢，
-  丢了必须用 `git update-index --chmod=+x` 补回，否则 CI 上跑不起来。
+- `gradlew` 与 `scripts/release.sh` 在 Git 索引及提交中的 exec 位应为 `100755`；若检查发现不是，
+  用 `git update-index --chmod=+x` 修正，否则 CI 上可能无法执行。
 - `.workbuddy-ai/`、`.zcode/` 是 AI 工具的本地状态（含本机路径），已 gitignore，
   不得提交。
 - `app/release/` 是本地 APK 留档（已 gitignore，不入库），只有本地跑过发版脚本才
@@ -235,6 +204,11 @@ GitHub Release 托管 APK asset，也是官网展示的唯一权威；Release �
   2026-09-21 实测该值为 `true` 时闹钟照样被延后 3 天。
 - SharedPreferences 的 key 是已发布客户端的持久状态，**不得改名**（改名等于清空
   老用户的设置）：`user_prefs`、`water_reminder_prefs`、`update_prefs`。
+- 界面上的「今天」**必须**来自 `ui/RememberToday.kt` 的 `rememberToday()`
+  （进入 `STARTED` 立即重算 + 可见期间 60s 轮询）。**不得**把 `LocalDate.now()` 存进
+  `remember` 当快照，**不得**用 `delay(到下一个午夜)` 做跨天刷新 —— `delay()` 走的是
+  `CLOCK_MONOTONIC` / `SystemClock.uptimeMillis()`，熄屏与深度睡眠期间不前进，后台放一夜
+  后 deadline 到不了，界面会一直停在旧日期（0.0.7 及更早的线上缺陷）。
 
 ## 环境与依赖约束
 
@@ -271,7 +245,7 @@ GitHub Release 托管 APK asset，也是官网展示的唯一权威；Release �
 | 检查 | 命令 | 覆盖什么 |
 | --- | --- | --- |
 | 编译 | `./gradlew assembleDebug`（JDK 17–23，推荐 17 或 21） | 任何 Kotlin / 资源 / 依赖改动 |
-| 版本一致性 | `python scripts/sync_version.py --check` | 版本号、`apkUrl` 文件名、`sha256` 格式 |
+| Manifest 校验 | `python scripts/sync_version.py --check` | `versionCode` 合法且不高于源码、`versionName` 格式、`apkUrl` 必须是 https 且与版本名匹配、`sha256` 格式及可用的构建元数据；不要求 Manifest 版本等于源码版本 |
 | 应用内更新 | 手工：装到设备上走一遍下载 → 校验 → 安装 | 只能手工验，见下 |
 
 - 改过 `.github/workflows/*.yml` 后、推送前，必须本地用 pyyaml 解析一遍
@@ -292,10 +266,3 @@ GitHub Release 托管 APK asset，也是官网展示的唯一权威；Release �
 - 不加「以防万一」的重试、缓存、超时、抽象层。
 - 不新建只为了「验证自己刚才改动」的检查器；要验证就用上面列的检查。
 - 不虚构文件清单或验证证据来显得精确；不确定就查证或如实说。
-
-## 汇报
-
-- 必须报告结果与对应的验证证据；有未解决的阻塞要如实说，不得宣称完成。
-- tradeoff / 警告 / 限制仅在用户要求或影响结果解读时给出，放在决策点上，
-  不堆免责声明。
-- 过程性流水账、自我保护的叙述不写进代码、提交信息和文档。
