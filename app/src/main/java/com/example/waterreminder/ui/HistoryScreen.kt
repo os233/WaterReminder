@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -63,17 +64,23 @@ fun HistoryScreen(
     val goal = remember { UserPrefs.getDailyGoal(context) }
     val snackbarHostState = remember { SnackbarHostState() }
     val allTotals by dao.getAllDailyTotals().collectAsState(initial = emptyList())
-    var selectedDate by remember { mutableStateOf(LocalDate.now().toString()) }
+    // 「今天」由 rememberToday() 驱动，跨天/长时间后台后自动刷新（原因见 RememberToday.kt）
+    val today = rememberToday()
+    // 用户显式点选的历史日期；null 表示「跟随今天」—— 这样停在「今天」的页面会随日期滚动，
+    // 而手动翻到某一天的不会被悄悄搬走。用 rememberSaveable：旋转屏幕 / 进程被回收重建后
+    // 仍停在用户选的那一天，不会被弹回今天
+    var pinnedDate by rememberSaveable { mutableStateOf<String?>(null) }
+    val selectedDate = pinnedDate ?: today.toString()
     val selectedRecords by dao.getRecordsByDate(selectedDate).collectAsState(initial = emptyList())
     val selectedTotal by dao.getDailyTotal(selectedDate).collectAsState(initial = 0)
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showCalendar by remember { mutableStateOf(true) }
 
-    // 最近 7 天数据（缺失的日期补 0）
-    val weekData = remember(allTotals) {
+    // 最近 7 天数据（缺失的日期补 0）。today 是 key：跨天后窗口要跟着挪，否则仍停在旧的一周
+    val weekData = remember(allTotals, today) {
         val map = allTotals.associate { it.recordDate to it.total }
         (6 downTo 0).map { offset ->
-            val d = LocalDate.now().minusDays(offset.toLong())
+            val d = today.minusDays(offset.toLong())
             d to (map[d.toString()] ?: 0)
         }
     }
@@ -114,7 +121,7 @@ fun HistoryScreen(
                     }
                 },
                 actions = {
-                    if (selectedDate == LocalDate.now().toString()) {
+                    if (selectedDate == today.toString()) {
                         IconButton(onClick = { showDeleteConfirm = true }) {
                             Icon(
                                 Icons.Default.Delete,
@@ -170,6 +177,7 @@ fun HistoryScreen(
                     total = selectedTotal ?: 0,
                     recordCount = selectedRecords.size,
                     goal = goal,
+                    today = today,
                     onToggleCalendar = { showCalendar = !showCalendar },
                     showCalendar = showCalendar
                 )
@@ -177,7 +185,7 @@ fun HistoryScreen(
                 Spacer(modifier = Modifier.height(12.dp))
 
                 // 最近 7 天统计图
-                WeeklyStatsCard(weekData = weekData, goal = goal)
+                WeeklyStatsCard(weekData = weekData, goal = goal, today = today)
             }
 
             // 日历视图（整块可折叠：上滑收起）
@@ -193,8 +201,9 @@ fun HistoryScreen(
                         dailyTotals = allTotals,
                         selectedDate = selectedDate,
                         goal = goal,
+                        today = today,
                         onCollapse = { showCalendar = false },
-                        onDateSelected = { selectedDate = it }
+                        onDateSelected = { pinnedDate = if (it == today.toString()) null else it }
                     )
                 }
             }
@@ -330,7 +339,7 @@ fun HistoryScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        scope.launch { dao.deleteRecordsByDate(LocalDate.now().toString()) }
+                        scope.launch { dao.deleteRecordsByDate(today.toString()) }
                         showDeleteConfirm = false
                     }
                 ) {
@@ -353,11 +362,12 @@ fun DateSummaryCard(
     total: Int,
     recordCount: Int,
     goal: Int,
+    today: LocalDate,
     onToggleCalendar: () -> Unit,
     showCalendar: Boolean
 ) {
     val percent = (total.toFloat() / goal).coerceIn(0f, 1f)
-    val isToday = date == LocalDate.now().toString()
+    val isToday = date == today.toString()
     // 矮视口（MuMu/小屏手机）下收紧汇总卡，给日历和周统计多留可见空间
     val compact = isCompactViewport()
 
@@ -378,7 +388,7 @@ fun DateSummaryCard(
             ) {
                 Column {
                     Text(
-                        text = formatDateDisplay(date),
+                        text = formatDateDisplay(date, today),
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onPrimaryContainer
@@ -464,7 +474,7 @@ fun DateSummaryCard(
 }
 
 @Composable
-fun WeeklyStatsCard(weekData: List<Pair<LocalDate, Int>>, goal: Int) {
+fun WeeklyStatsCard(weekData: List<Pair<LocalDate, Int>>, goal: Int, today: LocalDate) {
     val reachedCount = weekData.count { it.second >= goal }
     val validDays = weekData.count { it.second > 0 }
     val avg = if (validDays > 0) weekData.sumOf { it.second } / validDays else 0
@@ -542,7 +552,7 @@ fun WeeklyStatsCard(weekData: List<Pair<LocalDate, Int>>, goal: Int) {
 
             Row(modifier = Modifier.fillMaxWidth()) {
                 weekData.forEach { (date, _) ->
-                    val isToday = date == LocalDate.now()
+                    val isToday = date == today
                     Text(
                         text = "日一二三四五六"[date.dayOfWeek.value % 7].toString(),
                         modifier = Modifier.weight(1f),
@@ -571,11 +581,18 @@ fun CalendarView(
     dailyTotals: List<DailyTotal>,
     selectedDate: String,
     goal: Int,
+    today: LocalDate,
     onCollapse: () -> Unit,
     onDateSelected: (String) -> Unit
 ) {
-    var currentMonth by remember { mutableStateOf(YearMonth.now()) }
-    val today = LocalDate.now().toString()
+    val todayStr = today.toString()
+    // 默认停在「今天」所在的月份；用户手动翻过月份后就不再被跨天重置，
+    // 否则正在翻历史月份的用户会被一次日期刷新弹回当月
+    var navigated by remember { mutableStateOf(false) }
+    var currentMonth by remember { mutableStateOf(YearMonth.from(today)) }
+    LaunchedEffect(today) {
+        if (!navigated) currentMonth = YearMonth.from(today)
+    }
     val totalMap = remember(dailyTotals) { dailyTotals.associate { it.recordDate to it.total } }
     val firstDayOfMonth = currentMonth.atDay(1)
     val daysInMonth = currentMonth.lengthOfMonth()
@@ -623,7 +640,7 @@ fun CalendarView(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 FilledTonalIconButton(
-                    onClick = { currentMonth = currentMonth.minusMonths(1) },
+                    onClick = { navigated = true; currentMonth = currentMonth.minusMonths(1) },
                     modifier = Modifier.size(36.dp)
                 ) {
                     Text(
@@ -652,7 +669,7 @@ fun CalendarView(
                 }
 
                 FilledTonalIconButton(
-                    onClick = { currentMonth = currentMonth.plusMonths(1) },
+                    onClick = { navigated = true; currentMonth = currentMonth.plusMonths(1) },
                     modifier = Modifier.size(36.dp)
                 ) {
                     Text(
@@ -703,7 +720,7 @@ fun CalendarView(
                                     total = total,
                                     goal = goal,
                                     isSelected = dateStr == selectedDate,
-                                    isToday = dateStr == today,
+                                    isToday = dateStr == todayStr,
                                     onClick = { onDateSelected(dateStr) }
                                 )
                             }
@@ -942,10 +959,9 @@ fun HistoryRecordItem(
     }
 }
 
-fun formatDateDisplay(dateStr: String): String {
+fun formatDateDisplay(dateStr: String, today: LocalDate): String {
     return try {
         val date = LocalDate.parse(dateStr)
-        val today = LocalDate.now()
         when {
             date == today -> "今天"
             date == today.minusDays(1) -> "昨天"

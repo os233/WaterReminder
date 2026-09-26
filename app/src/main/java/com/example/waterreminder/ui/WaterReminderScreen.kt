@@ -59,9 +59,7 @@ import com.example.waterreminder.data.WaterRecordDao
 import com.example.waterreminder.notification.AlarmManagerHelper
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import java.time.Duration
 import java.time.LocalDate
-import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
 /**
@@ -90,16 +88,10 @@ fun WaterReminderScreen(
     var customAmount by remember { mutableStateOf("") }
     var showAboutDialog by remember { mutableStateOf(false) }
 
-    // 跟踪"今天"是哪天：跨过午夜后自动刷新，避免界面停留在昨天的数据
-    var today by remember { mutableStateOf(LocalDate.now()) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            val now = LocalDateTime.now()
-            val nextMidnight = now.toLocalDate().plusDays(1).atStartOfDay()
-            delay(Duration.between(now, nextMidnight).toMillis() + 1_000)
-            today = LocalDate.now()
-        }
-    }
+    // 「今天」由 rememberToday() 统一驱动：进入 STARTED 立即重算，可见期间每分钟兜底。
+    // ⚠️ 不要改回 delay(到下一个午夜) —— delay 走的是 CLOCK_MONOTONIC / uptimeMillis，
+    // 熄屏与深度睡眠期间不前进，后台放置一夜后 deadline 到不了，界面会一直停在旧日期。
+    val today = rememberToday()
 
     val todayTotal by remember(today) {
         dao.getTodayTotal(today.toString())
@@ -112,7 +104,8 @@ fun WaterReminderScreen(
         label = "progress"
     )
 
-    val streak = remember(allTotals, goal) { computeStreak(allTotals, goal) }
+    // 连续天数依赖「今天」：必须把 today 作为 key，否则跨天后仍按旧日期计算
+    val streak = remember(allTotals, goal, today) { computeStreak(allTotals, goal) }
 
     // 首次达成今日目标时播放一次庆祝动画（本次会话内不重复）
     val goalReached = (todayTotal ?: 0) >= goal
