@@ -80,6 +80,14 @@
   真实存在的 Release 才算数**。Release 被删而 Manifest 没跟着改时，源码与脚本都发现不了
   —— 官网靠「查不到 tag 就显示没有」把它暴露出来，App 端则表现为下载 404。删 Release
   后必须跟着推一个新的正式 tag（或手工修 Manifest，但那违反「机器字段只能 CI 写」，别做）。
+- **补改已发布版本的更新说明，必须移动 tag 才生效**：正式版的 Release 正文取自
+  **tag 指向的那个提交**里的 `docs/version.json`（`release.yml` 的 checkout 用
+  `ref: ${{ inputs.tag || github.ref }}`，`workflow_dispatch` 重跑读的也是 tag 里那份）。
+  所以只改 master 上的 `changelog` 再重跑 workflow **不会生效**，而且没有任何报错。
+  正确姿势：`git tag -f -a v<版本号> -m "..." <新提交>` 后 `git push --force origin v<版本号>`
+  —— 用 `-f` 重打而**不删 tag**，删了会让 `releases/tags/<tag>` 出现 404 窗口，
+  而官网首页、下载页与 App 内更新都查这个端点。详见 README「补改已发布版本的更新说明」。
+  `release.yml` 的「提示 changelog 是否需要移动 tag」步骤会把这种静默失败变成 run 上的 warning。
 
 ### 更新链路
 

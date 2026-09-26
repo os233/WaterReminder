@@ -214,6 +214,33 @@ Release 已经建好、Manifest 却没更新 —— 所有客户端永远收不�
 
 **务必始终使用同一个密钥库**。签名不一致会导致老用户无法覆盖安装，只能卸载重装。
 
+### 补改已发布版本的更新说明
+
+Release 正文取自 **tag 指向的那个提交**里的 `docs/version.json` —— `release.yml` 的
+`actions/checkout` 用 `ref: ${{ inputs.tag || github.ref }}`，所以 `workflow_dispatch`
+手动重跑读的也是 tag 里那份。这意味着「改完 `changelog` 再重跑一次 workflow」
+**不会生效**：读到的还是 tag 里的旧文字，而且**没有任何报错**。
+
+要让新文字生效，必须把 tag 挪到新提交上：
+
+```bash
+# 1. 改 docs/version.json 的 changelog，推 master
+git add docs/version.json
+git commit -m "docs: 补写 <版本号> 的更新说明" && git push origin master
+# 2. 把 tag 移到这个新提交上（-f 重打，不要删 tag）
+git tag -f -a v<版本号> -m "release: v<版本号>" <新提交>
+git push --force origin v<版本号>
+# 3. 重跑 workflow：Actions → Release → Run workflow，填 v<版本号>
+```
+
+⚠️ 用 `-f` 重打而**不删 tag**：删掉会让 `releases/tags/v<版本号>` 出现 404 窗口，
+而官网首页、下载页与 App 内更新都查这个端点。重跑走的是 PATCH 分支 —— Release 的
+`id` 与 `published_at` 都不变，只是替换正文，**不是新建一个 Release**。
+
+⚠️ 正式版的 Release 正文**不读 tag 注释**（读 Manifest 的 `changelog`），所以重打 tag 时
+`-m` 写什么都不影响正文；但必须保留 `-a`，否则 tag 变成 lightweight，预发布通道的
+说明来源会静默退化成兜底文案。
+
 ### 预发布一版（beta）
 
 预发布和正式发版走**同一条链路、同一个 workflow**，区别只在 tag 带后缀、以及不写 Manifest：

@@ -125,6 +125,35 @@ jobs:
             echo "tag 注释为空（lightweight tag 或未写 message）"
           fi
 
+      # 正式版的 Release 正文取自 tag 指向提交里的 docs/version.json（见「创建 Release」），
+      # 所以「改完 changelog 再重跑一次」不会生效 —— 读到的还是 tag 里那份旧的，且没有任何报错。
+      # 这一步把这种静默失败变成 run 页面上的显式提示。
+      # 只告警、不改行为：取不到 origin/master 或读不出字段都直接放行，不让它成为新的失败点。
+      - name: 提示 changelog 是否需要移动 tag
+        if: steps.channel.outputs.prerelease != 'true'
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          if ! git fetch --quiet origin master 2>/dev/null; then
+            echo "::notice::取不到 origin/master，跳过 changelog 一致性提示"
+            exit 0
+          fi
+          if ! git show origin/master:docs/version.json > "$RUNNER_TEMP/master-version.json" 2>/dev/null; then
+            echo "::notice::origin/master 上没有 docs/version.json，跳过一致性提示"
+            exit 0
+          fi
+          read_log() { python3 -c 'import json,sys;print(json.load(open(sys.argv[1],encoding="utf-8")).get("changelog") or "")' "$1"; }
+          if ! TAG_LOG=$(read_log docs/version.json) || ! MASTER_LOG=$(read_log "$RUNNER_TEMP/master-version.json"); then
+            echo "::notice::读取 changelog 失败，跳过一致性提示"
+            exit 0
+          fi
+          if [ "$TAG_LOG" = "$MASTER_LOG" ]; then
+            echo "changelog 与 origin/master 一致。"
+            exit 0
+          fi
+          echo "::warning::master 上的 changelog 与 tag $TAG 指向提交里的不同 —— Release 正文取自 tag 里那份（tag 是发布快照），本次重跑不会采用 master 上的新文字。要让它生效请移动 tag：git tag -f -a $TAG -m \"release: $TAG\" <新提交> && git push --force origin $TAG，然后重跑本 workflow。详见 README「补改已发布版本的更新说明」。"
+          exit 0
+
       # README 已说明：Gradle 8.11.1 只支持到 Java 23，固定用 17
       - name: 安装 JDK 17
         uses: actions/setup-java@v6
