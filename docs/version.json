@@ -1,8 +1,8 @@
 {
-  "versionCode": 7,
-  "versionName": "0.0.7",
-  "apkUrl": "https://github.com/os233/WaterReminder/releases/download/v0.0.7/WaterReminder_v0.0.7_release.apk",
-  "sha256": "ed7452a148242086ec2fd3bdf16bbec6deba681930f2c8be5c71094bef139dd7",
+  "versionCode": 8,
+  "versionName": "0.0.8",
+  "apkUrl": "https://github.com/os233/WaterReminder/releases/download/v0.0.8/WaterReminder_v0.0.8_release.apk",
+  "sha256": "5689f57fd7d9e37260c9c308f4bf9e5324fac76d32d9b985a49be4e3c0a4a603",
   "changelog": "本次解决「后台到点不提醒，只有回到 App 才弹出来」。要说清楚一件事：根源在系统侧，App 自身绕不过去 —— 实测 OPPO / realme / 一加 的系统会把后台应用的提醒整体推迟 3 天，到点不响，只有重新打开 App 才补上。所以第 1 条请务必照做，否则后台仍然不会提醒。\n1. 新增后台运行引导：这类机型进入提醒设置会看到「让提醒在后台也能响」，提供「应用耗电管理」与「应用设置」两个直达入口，并写清了要在系统里打开「允许完全后台行为」与「自启动」。放行之后后台才会按时提醒。\n2. 移除常驻前台服务（保活）：实测进程活着反而会被系统冻结、冻结后提醒被丢弃；进程不在时，系统才会为投递提醒把它启动起来。更新后通知栏里那条常驻通知会消失。\n3. 清理保活服务遗留的通知渠道，避免在系统的通知设置里留下一个永远不会响的死渠道。\n4. 覆盖安装（含应用内更新）后会自动补排提醒。此前只有开机才会补，安装完若不打开 App，提醒可能一直不响。\n5. 精确闹钟权限被系统撤掉时不再崩溃（Android 12 / 12L 上可能触发）。\n6. 注意：0.0.5 及更早版本的应用内更新会「下载完成但没有任何反应」—— 这正是之前修过的问题，而修复只能由新版本来执行。请到 Releases 页面手动下载本版 APK 覆盖安装（数据不会丢失）",
   "forceUpdate": false
 }
