@@ -4,6 +4,50 @@
 
 核心原则：**完整完成请求的任务，让真实需求驱动复杂度。** 不做投机性防御，不搞范围蔓延，不用额外流程表演勤奋。以下内容是这些原则在本仓库的具体做法。
 
+## 喝水提醒 APP 软件架构设计
+
+### 整体架构分层
+
+应用采用单体 Android 应用内的轻量分层，按职责分为呈现层、应用与系统协调层、数据层：
+
+- **呈现层（`ui/`）**：Jetpack Compose 页面负责展示饮水概览、记录历史和提醒设置，并响应用户操作。`rememberToday()` 负责提供随生命周期更新的当前日期。
+- **应用与系统协调层（`MainActivity`、`notification/`）**：Activity 连接界面与 Android 生命周期；提醒模块把用户设置转换为系统闹钟，并在广播到达时判断免打扰时段、发出通知或恢复调度。
+- **数据层（`data/`）**：Room 管理饮水记录及查询，SharedPreferences 保存轻量设置；远程更新检查模块通过 OkHttp 获取发布 Manifest 并显式校验字段。
+
+当前没有独立的 Domain 或 Repository 层。界面按功能直接调用 DAO 和设置对象，闹钟与通知功能由 Android 平台 API 承担；新增抽象应以实际缺口为依据。
+
+### 核心模块划分
+
+- **提醒调度**：`AlarmManagerHelper` 读取提醒间隔、启用状态和免打扰设置，使用 `AlarmManager` 安排精确闹钟并记录下一次触发时间；`BootReceiver` 在设备启动或应用替换后恢复有效提醒。
+- **通知推送**：`AlarmReceiver` 接收闹钟广播，先安排下一次提醒，再按免打扰时段决定是否通知；通知由 Android `NotificationManager` / AndroidX `NotificationCompat` 发布，点击后打开主界面。
+- **饮水量记录**：`WaterRecord` 表示一笔饮品记录；`WaterRecordDao` 提供新增、删除、按日读取、每日总量和历史汇总查询。每日饮水量按 `amount × hydration` 折算。
+- **数据存储与设置**：`WaterDatabase` 是 Room 数据库入口，`WaterRecordDao` 是记录查询接口；`UserPrefs` 保存每日目标，提醒模块的偏好设置保存提醒与免打扰状态。更新检查状态由独立的更新偏好设置维护。
+- **更新检查**：`UpdateChecker` 获取版本 Manifest，`UpdateInfo` 承载经过校验的结果；它与本地饮水记录、提醒调度相互独立。
+
+### 模块交互关系
+
+1. 用户在 Compose 页面新增或删除记录，界面调用 DAO 写入 Room；DAO 以 `Flow` 提供记录列表和每日汇总，数据变化后界面自动刷新。
+2. 界面读取/更新每日目标与提醒选项时，分别调用对应的偏好设置接口；提醒设置变化后由 `AlarmManagerHelper` 安排或取消系统闹钟。
+3. 到达触发时刻后，Android 将广播交给 `AlarmReceiver`。接收器先衔接下一轮调度，再根据免打扰设置发布通知；通知的点击意图回到 `MainActivity`。
+4. 设备重启或应用更新时，`BootReceiver` 根据持久化的提醒状态调用恢复逻辑。Room 数据独立持久化，不依赖提醒广播或网络更新检查。
+
+### 关键数据结构
+
+- **`WaterRecord`**：`id`（自增主键）、`amount`（毫升数值）、`timestamp`（`LocalDateTime`）、`drinkType`（饮品类型标识）、`hydration`（折算系数）。`DailyTotal` 用日期字符串与总量表示某日汇总。
+- **每日总量**：DAO 按记录日期聚合 `amount * hydration`，并转换为整数；日期由调用方明确传入。
+- **提醒状态**：SharedPreferences 保存启用标记、间隔、下一次触发时间，以及免打扰开关和起止小时。下一次触发时间使用 epoch 毫秒表示，用于恢复原定闹钟。
+- **用户设置**：`user_prefs` 保存每日目标；数据库名为 `water_database`，记录表为 `water_records`。
+- **更新信息**：`UpdateInfo` 表示已校验的远程版本信息，包括版本码、版本名、HTTPS 安装包地址及可选 SHA-256 摘要；远程 Manifest 的兼容约束见 `AGENTS.md`「更新链路」。
+
+### 主要技术选型
+
+- **Kotlin + Android 平台 API**：应用主体语言与系统集成基础；提醒由 `AlarmManager` 和 `BroadcastReceiver` 完成，不依赖常驻前台服务。
+- **Jetpack Compose**：声明式构建主界面及历史界面；Kotlin Coroutines `Flow` 将数据库查询结果传递给界面。
+- **Room**：以实体、DAO 和 SQLite 数据库管理结构化饮水记录，并通过显式 Migration 保留已有用户数据。
+- **SharedPreferences**：存储每日目标、提醒设置和少量更新状态；这些键属于持久化兼容面。
+- **AndroidX Core / NotificationCompat**：兼容不同 Android 版本的通知构建与平台辅助能力。
+- **OkHttp + Gson 的 JSON 解析 API**：OkHttp 承担更新 Manifest 的 HTTP 请求；解析采用逐字段显式校验，遵守 `AGENTS.md` 对兼容与失败处理的约束。
+
 ## 停止阶梯
 
 选实现、加机制、扩验证时，按此阶梯决策：
