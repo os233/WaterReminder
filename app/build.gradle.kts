@@ -27,8 +27,8 @@ android {
         targetSdk = 36
         // 预发布写法：versionName 带 `-<后缀>`（如 `0.0.1-beta.1`），tag 必须与之一致
         // （`sync_version.py --expect-tag` 要求严格相等），且预发布不写回 Manifest —— 见 AGENTS.md。
-        versionCode = 8
-        versionName = "0.0.8"
+        versionCode = 9
+        versionName = "0.0.9"
     }
 
     signingConfigs {
