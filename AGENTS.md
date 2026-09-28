@@ -1,276 +1,114 @@
 # AGENTS.md
 
-本文件记录在本仓库工作的 AI 代理必须遵守的硬边界与技术约束。
-代理的职责原则、任务处理方式和汇报要求见 [programs.md](programs.md)。
+本文件是 WaterReminder 仓库的协作规范，规定代码与数据兼容约束、开发边界及测试策略。所有在本仓库执行代码阅读、修改、构建、验证或发布工作的 AI 代理都必须遵守。
 
-## 怎么读这份文件
+代理的任务模式、工作步骤和汇报规则见 [programs.md](programs.md)。本文件约束优先于 README 中的说明；发现两者矛盾时按本文件执行，并在同一任务中修正相关 README。约束中的「必须」「不得」「禁止」为硬要求；「默认」「优先」为无明确理由时应遵循的做法。用户明确指示可以放宽「默认」「优先」做法，但不得放宽涉及密钥与隐私的条款。
 
-- **硬约束**：以「必须」「禁止」「不得」表述的条目。违反即视为任务未完成，
-  不得以「看起来无害」「顺手」为由放宽。
-- **默认做法**：以「默认」「优先」表述的条目。没有具体理由就照做；
-  偏离时必须在汇报里说明理由。
-- **冲突时以更严的为准**：用户的明确指示可以放宽默认做法，但**不得放宽
-  「本仓库硬边界」里涉及密钥与隐私的条款**。真遇到冲突，先说明再动。
-- 本文件与 `README.md` 有重叠时：这里是**约束**，README 是**解释**。
-  两者不一致，按本文件执行，并把 README 一并改对。
+## 第一部分：约束条款
 
-## 本仓库硬边界
+### 1. 安全、隐私与仓库卫生
 
-### 密钥与隐私
+**适用范围：** 所有文件读写、命令输出、构建与设备日志、对话、提交、文档、截图及外部协作内容。
 
-- **禁止提交** `keystore.properties`、`*.jks`、`local.properties`；
-  `keystore.properties.example` 只放占位值，不得把真实口令或本机路径填进去提交。
-- **禁止回显**以下任何值，只描述其存在与用途：`keystore.properties` 里的
-  `storeFile` / `storePassword` / `keyAlias` / `keyPassword`、密钥库文件内容、
-  CI Secrets（`KEYSTORE_BASE64`、`STORE_PASSWORD`、`KEY_ALIAS`、`KEY_PASSWORD`）。
-  `KEYSTORE_BASE64` 是密钥库的等价物 —— base64 不是加密，同样按密钥对待。
-- 脱敏适用于**一切输出渠道**：汇报、对话、日志、提交信息、文档、issue / PR 评论、
-  截图。密钥、token、口令一律用 `***` 或 `<redacted>` 替代。
-- 本机绝对路径与设备标识（用户目录、SDK / JDK 路径、`adb` 设备串号）同样按敏感信息
-  对待：只写进工作区 `.workbuddy-ai/memory/`，不得写进入库文件或对外输出。
-  **但口令、token、密钥（含 base64 形式）连 memory 也不得写**，也不得落进任何临时
-  文件 —— 它们只存在于 `keystore.properties` 与 CI Secrets 里。
-- **贴输出前先扫一遍**：把脚本 / 构建 / 设备的输出粘进任何对外内容（汇报、issue、
-  PR 评论、文档）之前，先检查有没有带出本机路径或设备串号，该换成相对路径或
-  `***` 再贴。仓库自己的输出已按此收过一轮（`release.sh` 只报仓库名、
-  `packageRelease` 的校验消息只报 keystore 文件名），但 Gradle / AGP / `adb`
-  自身的报错与日志仍会带绝对路径 —— 这类输出不得原样外发。
-- 用户数据（饮水记录、`water_database`、`shared_prefs`）属于隐私：要展示其内容时
-  先脱敏，或改用构造的样例数据。
-- **发现泄漏必须立即处理**：停止继续扩散并告知用户，由用户决定是否轮换口令或重建
-  密钥库；代理不得自行更换密钥库、不得删改历史提交 —— 换库意味着老用户只能卸载
-  重装（见 README「发布流程」），是不可逆的对外影响。
+- 不得提交 `keystore.properties`、`*.jks`、`local.properties`。`keystore.properties.example` 只允许占位值，不得含真实口令或本机路径。
+- 不得回显 `keystore.properties` 中 `storeFile`、`storePassword`、`keyAlias`、`keyPassword` 的值、密钥库内容，或 CI Secrets `KEYSTORE_BASE64`、`STORE_PASSWORD`、`KEY_ALIAS`、`KEY_PASSWORD`。`KEYSTORE_BASE64` 与密钥库等价，不能因其为 base64 而视为安全。
+- 密钥、token、口令在任何渠道一律以 `***` 或 `<redacted>` 代替；不得写入 memory、日志或临时文件。发现泄漏时立即停止扩散并告知用户；不得自行轮换密钥库或改写历史提交，由用户决定后续处置。
+- 用户目录、SDK/JDK 绝对路径及 `adb` 设备标识属于敏感信息，只能记录在工作区 `.workbuddy-ai/memory/`，不得进入仓库文件或对外输出。外发脚本、Gradle、AGP、adb 输出前，先检查并脱敏绝对路径和设备标识。
+- 饮水记录、`water_database`、`shared_prefs` 属于用户数据。展示时先脱敏，或使用构造样例。
+- `.workbuddy-ai/` 与 `.zcode/` 是本地工具状态，不得提交。提交前查看 `git status`，只暂存任务相关文件；不得用 `git add -A` 把 IDE、本机配置或临时数据带入提交。
+- 换行遵循 `.gitattributes`：文本使用 LF，`*.bat` 使用 CRLF；`gradlew` 必须为 LF。Git 索引中的 `gradlew` 和 `scripts/release.sh` 执行位必须为 `100755`，不符时用 `git update-index --chmod=+x` 修正。
+- `app/release/` 是本地 APK 留档，已忽略且不入库；除发版流程外不得改动。不得假定本机存在旧 APK 作为线上版本对比依据。
 
-### 版本与发版
+### 2. 开发范围、依赖与工具链
 
-- `versionCode` 必须严格递增（脚本只能防版本文件回退，跨版本递增由发版人保证），
-  且与 `versionName` **同序** —— Manifest 的 `apkUrl` 文件名由 `versionName` 拼出，
-  两者不同序会让客户端拿到一个对不上的下载地址。
-- **历史记录：0.0.1 重置（2026-09-15，一次性）**。当时 Release 与 tag 已清空，版本号从
-  `0.0.1` 重新起算，曾一次性豁免严格递增及 Manifest 机器字段只能由 CI 写回的规则。
-  此例外已结束；当前及后续版本按上面的严格递增规则执行，Manifest 机器字段仍只能由 CI 写回。
-  已接受的兼容影响是：重置时已装 `1.4.0`（`versionCode = 7`）的客户端不能收到低于其版本码的更新，
-  Android 也拒绝降级安装（`INSTALL_FAILED_VERSION_DOWNGRADE`），需卸载重装。
-- `docs/version.json` 是**发布 Manifest**。它的机器字段
-  （`versionCode` / `versionName` / `apkUrl` / `sha256`）**只能由 CI 在 Release 建好后
-  写回**，不得手改；唯一手写的是 `changelog` 与 `forceUpdate`。
-  **本地发版不得提前改机器字段** —— 那会让 Manifest 指向一个还没上传的 asset，
-  老客户端点更新直接 404。
-- Release 缺 `keystore.properties` 时在 `packageRelease` 阶段失败是**刻意设计**
-  （避免产出装不上的未签名 APK），**不得「修复」**。
-- `scripts/release.sh` 不自动 commit / push 也是**刻意设计**。未经用户明确确认，
-  代理不得 push、不得发版。**推形如 `v1.4.0` 的 tag 即发版**（release 工作流会自动
-  构建签名 APK 并创建 Release）；推 `master` 则上线 Pages 官网（`docs/`）。
-  两者都是对外动作，必须分别确认，顺序见 README「发布流程」。
-- **预发布（beta）**的 tag 形如 `v<versionName>-<后缀>`（如 `v0.0.1-beta.1`），
-  `app/build.gradle.kts` 的 `versionName` 必须带同样的后缀 —— `sync_version.py --expect-tag`
-  要求两者严格相等，而 APK 文件名由 `versionName` 拼出。预发布与正式发版有三处差别：
-  ① Release 必须标记为 prerelease（当前工作流通过 GitHub API 的 `prerelease` 字段设置；不标记就会被当成正式 Release 列进 Releases 列表，
-  也会让 `version.json` 指向的那个 tag 被换掉 —— 官网首页的下载按钮是拿 tag 去查的，
-  查错了就等于把 beta 顶上去）；② **不得写回 `docs/version.json`** ——
-  Manifest 是所有客户端（含已发布的正式版）唯一的更新源，写进去等于把 beta 推给全部用户；
-  ③ 预发布自己的更新说明写在 **tag 的注释里**（`git tag -a v0.0.2-beta.1 -m "<正文>"`），
-  `release.yml` 的「判定发布通道」步骤把注释文件路径导出到 `steps.channel.outputs.notesFile`，
-  「创建 Release」步骤据此选 body 源（预发布用 tag 注释，正式版用 Manifest 的 `changelog`）。
-  这是「预发布不动 Manifest」与「beta 也需要说明」之间唯一不违反兼容契约的折中：
-  正文存在 tag 对象里，不碰任何已发布客户端读的文件。
-  三者合起来意味着预发布与它对应的正式版**共用同一个 `versionCode`**，这是「严格递增」
-  的唯一豁免。预发布也**不解决**「Manifest 指向的正式包不存在」这类问题 —— 客户端只认正式 tag。
-  ⚠️ 只有 `docs/version.json` 指针正确还不够：**它的机器字段由 CI 写回，都指向某个
-  真实存在的 Release 才算数**。Release 被删而 Manifest 没跟着改时，源码与脚本都发现不了
-  —— 官网靠「查不到 tag 就显示没有」把它暴露出来，App 端则表现为下载 404。删 Release
-  后必须跟着推一个新的正式 tag（或手工修 Manifest，但那违反「机器字段只能 CI 写」，别做）。
-- **补改已发布版本的更新说明，必须移动 tag 才生效**：正式版的 Release 正文取自
-  **tag 指向的那个提交**里的 `docs/version.json`（`release.yml` 的 checkout 用
-  `ref: ${{ inputs.tag || github.ref }}`，`workflow_dispatch` 重跑读的也是 tag 里那份）。
-  所以只改 master 上的 `changelog` 再重跑 workflow **不会生效**，而且没有任何报错。
-  正确姿势：`git tag -f -a v<版本号> -m "..." <新提交>` 后 `git push --force origin v<版本号>`
-  —— 用 `-f` 重打而**不删 tag**，删了会让 `releases/tags/<tag>` 出现 404 窗口，
-  而官网首页、下载页与 App 内更新都查这个端点。详见 README「补改已发布版本的更新说明」。
-  `release.yml` 的「提示 changelog 是否需要移动 tag」步骤会把这种静默失败变成 run 上的 warning。
+**适用范围：** 所有代码、资源、脚本、构建配置及依赖改动。
 
-### 更新链路
+- 只实现用户请求及其必要后果；不顺手重构无关代码。优先使用现有 Android API、Kotlin、Compose、Room、OkHttp 等能力。不得为了少量代码引入依赖或抽象。
+- 新增第三方依赖前，必须说明用途及现有能力为何不足。依赖版本写在 `app/build.gradle.kts`；本仓库没有 version catalog。仓库来源固定于 `settings.gradle.kts` 的 `google()` / `mavenCentral()`；因启用 `FAIL_ON_PROJECT_REPOS`，不得在模块内另设 repositories。
+- `scripts/` 下 Python 脚本必须仅使用标准库。不得新增仅用于验证刚完成改动的检查器；本项目没有测试套件，不得为凑验证新建测试脚手架，除非任务本身要求增加测试。
+- 工具链版本是硬约束；构建报错先核对环境，不能通过随意升级工具或依赖绕过：JDK 17 或 21（Gradle 8.11.1 不支持 Java 24+；CI 使用 17）；Android platform `android-36`，`compileSdk` 与 `targetSdk` 为 36；CI 安装 `build-tools;36.0.0`；Gradle 8.11.1 且只用仓库 wrapper；AGP 8.10.1、Kotlin 2.0.21、KSP 2.0.21-1.0.28；Python 3.9+ 仅供脚本使用。
+- CLI 构建前必须设置 `JAVA_HOME`。Android SDK 由 `ANDROID_HOME` / `ANDROID_SDK_ROOT` 或本地 `local.properties` 指定；本机路径不得写入入库文件。Java 源码和字节码目标固定为 17；`minSdk = 26`，高于 API 26 的平台 API 必须按 `SDK_INT` 分支。
 
-App 内更新是本项目唯一在运行时依赖外部的链路，**改坏了不报任何错**，只表现为
-「永远没有更新」或「下载完装不上」。以下条目与 `UpdateChecker.kt` / `UpdateInfo.kt`
-一一对应，改这两处时必须逐条对照：
+### 3. 持久数据与 Android 行为兼容
 
-- **唯一更新源是 `https://os233.github.io/WaterReminder/version.json`**
-  （`UpdateChecker.VERSION_JSON_URL`）。不得改回 GitHub Releases API，也不得换成
-  别的地址 —— 已发布的老客户端请求的就是这个 URL。
-- **`docs/version.json` 的字段结构是兼容契约**：已发布的旧客户端按**顶层字段**
-  反序列化它。只能新增字段，**不得改名、删字段，也不得把它们挪进嵌套对象**。
-- **解析必须用 `JsonParser` 逐字段显式校验，不得改用 Gson 直接反序列化** ——
-  Gson 会把缺失字段静默填成 `0` / `null`，表现为「永远没有更新」，且没有任何报错。
-- **版本比较必须用整数 `versionCode`**（对 `PackageInfo.longVersionCode`，
-  API 28 以下回退到 `versionCode`），不得改成解析 `versionName` 字符串 ——
-  `"1.10.0" > "1.9.0"` 这种排序只能靠整数比较成立。
-- `apkUrl` 只接受 `https://`；`sha256` 必须是 **64 位十六进制**，格式不符时按
-  「没有摘要」处理（跳过下载后校验），**不得**拿一个没校验过的值去比对。
-- **下载完必须先校验 SHA-256，再交给安装器**：不一致就删包并提示重试。
-  不得为「少一步」删掉这段。
-- **安装包必须落在应用自己的外部私有目录**（`setDestinationInExternalFilesDir` +
-  `getExternalFilesDir(DIRECTORY_DOWNLOADS)`），**不得**改回公共 Downloads 目录 ——
-  本应用没有声明任何存储权限（`appops` 里 `READ` / `WRITE_EXTERNAL_STORAGE` 都是 `ignore`），
-  FUSE 会拒绝遍历公共目录，`File.exists()` 恒为 `false`，于是下载成功了也静默返回。
-  改落点必须同步改 `res/xml/file_paths.xml`（`<external-files-path>`），否则
-  `FileProvider.getUriForFile` 抛 `IllegalArgumentException`。
-- **`ACTION_DOWNLOAD_COMPLETE` 的接收器必须用 `RECEIVER_EXPORTED` 注册**，
-  **不得**改成 `RECEIVER_NOT_EXPORTED` —— 该广播由 `com.android.providers.downloads`
-  （appId 10060）发出，既不是 root / system（`ActivityManager.canAccessUnexportedComponents`
-  只放行 uid 0 与 1000）也不是本应用，AMS 会按 `Exported Denial` 直接丢弃它，
-  表现就是「下载完装不上」且没有任何报错。放开导出没有实际风险：接收器先按
-  `downloadId` 过滤，再向 `DownloadManager` 复核状态，最后还要比对 SHA-256。
-- **更新信息检查的失败只返回 `Failed`**：断网、HTTP 非 2xx、JSON 结构不符、字段非法时，
-  不抛异常、不弹错误提示，也不影响 App 其余功能。下载或安装阶段的失败按相应规则提示用户；
-  摘要校验失败时删除安装包并提示重试。
-- 自动检查**必须只在真问到结果时才写** `update_prefs.last_check_at`（12 小时节流），
-  否则一次断网会把重试也压掉 12 小时。
+**适用范围：** Room 实体/数据库、SharedPreferences、提醒、日期展示及后台引导相关改动。
 
-### 文件与目录
+- Room 实体变更必须提供对应 `Migration`。当前数据库版本为 2，v1→v2 增加了 `drinkType` 与 `hydration`。不得使用 `fallbackToDestructiveMigration`；饮水记录是用户唯一数据。
+- 已发布客户端依赖的 SharedPreferences 文件名/key 是持久化兼容面，不得改名或清空：`user_prefs`、`water_reminder_prefs`、`update_prefs`。
+- 提醒必须由 `setExactAndAllowWhileIdle` 调度，不得改为 `setAlarmClock`。免打扰判断必须保留跨午夜（`start > end`）分支。不得引入常驻前台服务保活：既有实测表明它不能阻止 ROM 冻结，反而会妨碍闹钟投递。
+- OPPO、realme、一加的后台白名单引导必须常驻显示；不得尝试探测授权后隐藏。不得把 `isIgnoringBatteryOptimizations()` 当成后台已放行的依据。
+- 所有界面上的「今天」必须由 `ui/RememberToday.kt` 的 `rememberToday()` 提供：进入 `STARTED` 时立即刷新，可见期间每 60 秒轮询。不得把 `LocalDate.now()` 作为 `remember` 快照，也不得用等待至午夜的 `delay()` 刷新日期，因为设备深度睡眠时单调时钟不前进。
 
-- 换行符以 `.gitattributes` 为准：文本一律 LF 入库，`*.bat` 为 CRLF；
-  尤其 `gradlew` 必须保持 LF（CRLF 会让 Linux CI 直接挂）。
-- `gradlew` 与 `scripts/release.sh` 在 Git 索引及提交中的 exec 位应为 `100755`；若检查发现不是，
-  用 `git update-index --chmod=+x` 修正，否则 CI 上可能无法执行。
-- `.workbuddy-ai/`、`.zcode/` 是 AI 工具的本地状态（含本机路径），已 gitignore，
-  不得提交。
-- `app/release/` 是本地 APK 留档（已 gitignore，不入库），只有本地跑过发版脚本才
-  存在；分发走 Release asset，除发版流程外不得动。别假设磁盘上有上一版 APK 可供
-  比对 —— 校验线上包见「发布链路」。
-- `docs/` 是 GitHub Pages 的站点根，只放静态文件，不得引入构建步骤。
-  页面里的版本信息以 GitHub Releases 为**唯一权威**：`version.json` 的地位按页面分。
-  首页与下载页只读它的 `versionName` 当作「期望的版本号」，再查
-  `GET /releases/tags/v<versionName>` —— **Release 与 `.apk` asset 都真实存在才显示**，
-  缺了就显示「尚无可下载的安装包」并指向 Releases 页面。**不得**在查不到 Release 时
-  退回去显示清单里的版本号与 `apkUrl`（那是死链，且版本并不存在）。
-  更新日志页在 API 失败或列表为空时读它渲染一条带「本站清单」标签的兜底记录，
-  这是唯一允许它成为展示内容的情形，且必须标明来源。
-  未认证配额按出口 IP 共享、容易被用光，但配额压力不构成把清单当权威的理由。
-  除 `version.json` 外不得再另存版本清单。
+### 4. 应用内更新兼容契约
 
-## 发布链路
+**适用范围：** `UpdateChecker.kt`、`UpdateInfo.kt`、下载/安装实现、`docs/version.json` 结构以及相关文件提供配置。改动这些部分时逐项核对本节。
 
-**权威来源**：版本号在 `app/build.gradle.kts`；**发布 Manifest 是 `docs/version.json`**
-—— App 内更新读它，官网把它当「期望的版本号」再去 Releases 求证（见「文件与目录」）。
-GitHub Release 托管 APK asset，也是官网展示的唯一权威；Release 页面上的说明由 CI
-从 `changelog` 生成，不另写一份。
+- 更新唯一来源是 `https://os233.github.io/WaterReminder/version.json`（`UpdateChecker.VERSION_JSON_URL`）。不得改成 Releases API 或其他地址。
+- `docs/version.json` 的现有顶层字段是已发布客户端兼容契约：只能新增字段，不得重命名、删除或移入嵌套对象。
+- 必须使用 `JsonParser` 逐字段显式校验；不得直接用 Gson 反序列化更新对象，以免缺失字段静默变成 `0` / `null`。
+- 版本比较必须使用整数 `versionCode`，本机版本取 `PackageInfo.longVersionCode`，API 28 以下回退到 `versionCode`；不得按 `versionName` 字符串排序。
+- `apkUrl` 仅接受 HTTPS。`sha256` 仅在其为 64 位十六进制时有效；格式非法按无摘要处理，绝不拿未校验的字符串比较。
+- 下载完成后必须先计算并核对 SHA-256，再交给安装器。摘要不一致必须删除下载包并提示重试。
+- 安装包必须保存到应用外部私有目录：使用 `setDestinationInExternalFilesDir` 和 `getExternalFilesDir(DIRECTORY_DOWNLOADS)`；不得改到公共 Downloads。更改存储位置时必须同步核对 `res/xml/file_paths.xml` 的 `<external-files-path>`，确保 `FileProvider` 可访问。
+- `ACTION_DOWNLOAD_COMPLETE` 接收器必须以 `RECEIVER_EXPORTED` 注册，不得改为 `RECEIVER_NOT_EXPORTED`。接收器必须先校验 `downloadId`，再向 `DownloadManager` 核实状态，并执行 SHA-256 校验。
+- 更新信息检查遇到断网、非 2xx、JSON 结构错误或字段非法时只返回 `Failed`：不抛出到调用方、不弹错误、不影响其他功能。下载/安装失败按各自阶段提示；摘要校验失败须删包并提示重试。
+- 自动检查只有真正得到检查结果时才写 `update_prefs.last_check_at`，以维持 12 小时节流；失败请求不得压住后续重试。
 
-- 推形如 `v1.4.0` 的 tag → `release.yml` 构建签名 APK → 创建 Release 并上传 asset →
-  核对 asset 的 SHA-256 → **把 `versionCode` / `versionName` / `apkUrl` / `sha256`
-  写回 `docs/version.json` 并推 master**。预发布 tag（如 `v1.5.0-beta.1`）**同样会触发**
-  这个 workflow，区别只是建 prerelease 且不写回 Manifest —— 不要以为它被过滤器挡掉了。
-  `on.push.tags` 的两条 glob 里，`v[0-9]*.[0-9]*.[0-9]*` 由于 `*` 是通配符而不是量词，
-  本身就已经匹配 `v0.0.1-beta.1`；第二条只是把这个意图显式写出来，不是冗余。
-- **顺序**：先推 `master`，再推 tag —— tag 要打在已经推到 master 的提交上。CI 的写回步骤
-  会先 `git fetch` + `git rebase origin/master` 再推，所以构建那几分钟里 master 又被推了
-  提交（发版后补文档很常见）也不会丢写回；不加这两步的话推送会被拒，结果是 Release 已建好、
-  Manifest 却没更新 —— 所有客户端永远收不到这个版本，且不报任何错。
-- 机器字段只能由 CI 写（理由见「版本与发版」）。这条取代了以前「发版后人工确认 asset
-  已上传」的要求 —— CI 先上传 asset 再改 Manifest，顺序由机器保证。
-- 校验线上包必须用 Releases API 里 asset 的 `digest`（GitHub 官方算好的 SHA-256），
-  **不得真去下那 11MB**；本机代理会截断响应体，下载比哈希更不可靠。
-- 本机没有 `gh` CLI。查 Release / asset 用
-  `curl -sL https://api.github.com/repos/os233/WaterReminder/releases` + Python 解析。
-- Pages 源是 `master` 分支的 `/docs` 目录。**改 Pages 源是纯手工操作**：Pages 设置
-  没有可用 API，本机也没有任何 GitHub token —— 需要动源时只能让用户去网页点，
-  代理不得反复尝试。
+### 5. 版本、Manifest 与发布边界
 
-## GitHub Actions 的已知坑
+**适用范围：** `app/build.gradle.kts` 版本号、`docs/version.json`、发布脚本、Git tags、GitHub Release、Pages 及相关 workflow。
 
-以下是排查经验，不是约束，但决定往哪个方向查：
+- `versionCode` 必须严格递增，并与 `versionName` 同序；脚本只防版本文件回退，跨发布递增由发布人保证。2026-09-15 的 `0.0.1` 重置豁免已结束。重置造成旧 `1.4.0`（code 7）用户不能接收更低 code 的更新，Android 也会拒绝降级安装；此兼容影响已接受。
+- `docs/version.json` 是发布 Manifest。`versionCode`、`versionName`、`apkUrl`、`sha256` 只能由 Release 建立后的 CI 写回；手动只维护 `changelog` 与 `forceUpdate`。本地不得提前改机器字段，以免客户端请求尚未上传的 asset。
+- Release 缺少 `keystore.properties` 时在 `packageRelease` 阶段失败是有意设计，禁止绕过或改成生成未签名 Release APK。`scripts/release.sh` 不自动 commit/push 也是有意设计。
+- 未经用户明确确认，不得 push、发版或执行其他对外发布动作。推送正式形如 `v1.4.0` 的 tag 会触发签名构建和 Release；推送 `master` 会发布 Pages。二者是独立的对外动作，必须分别获得确认，顺序遵循 README「发布流程」。
+- Beta tag 使用 `v<versionName>-<后缀>`，源码 `versionName` 必须包含相同后缀。预发布 workflow 也会触发：Release 必须标记 prerelease；不得写回 `docs/version.json`；预发布说明写入带注释 tag，由 workflow 作为 Release 正文来源。Beta 与其正式版共用同一 `versionCode`，这是唯一递增豁免。Beta 不替代 Manifest 所指正式包。
+- 正式 Release 正文取自 tag 指向提交中的 `docs/version.json`。只改 master 的 changelog 后重跑 workflow 不会更新已发布正文。确需补改时用 `git tag -f -a` 移动 tag 并强推该 tag，不要先删除 tag，以免 Releases tag 页面短暂 404。此操作仍属外部发布动作，需用户明确确认。
+- Manifest 的机器字段必须指向真实存在的 Release。删除 Release 后不得手改 Manifest；应按正式发布流程处理。线上 APK 摘要从 Releases API asset 的 `digest` 核验，不得下载大体积 APK。
+- Pages 根目录为 `master/docs`，只放静态文件，不得引入构建步骤。首页和下载页把 `version.json` 的 `versionName` 作为期望版本，再查询对应 Release；仅当 Release 与 `.apk` asset 都存在时显示下载。查不到时显示无可下载包并链接 Releases，不能回退展示 Manifest 中的旧版本或 apkUrl。更新日志 API 失败或列表为空时，可用带「本站清单」来源标记的兜底记录。不得在 `version.json` 外另存版本清单。
+- 本机没有 `gh` CLI。查询 Release/asset 使用 `curl -sL https://api.github.com/repos/os233/WaterReminder/releases` 并用 Python 解析。Pages 设置不能通过可用 API 修改；需要更改 Pages 源时由用户在网页操作，代理不得反复尝试。
 
-- **workflow「启动失败」不等于构建失败**：run 里没有任何 job、`name` 显示成
-  **文件路径**（而不是 `name:` 的值）、conclusion=failure —— 三者同时出现就是
-  GitHub 压根没解析成功这个 YAML，别去翻构建日志。
-- 一次 push 若修改了某个 workflow 文件，GitHub 会重新注册它，注册失败就产生一个
-  startup failure run —— 即使该 workflow 的 `on:` 不匹配这次 push。所以
-  「推 master 却冒出 release 的失败 run」多半是 YAML 非法，不是被误触发发版
-  （用 `git ls-remote --tags origin` 确认 tag 没变）。
-- 块标量（`run: |`）里写多行内联脚本极易踩缩进：块内每行必须缩进到同一列。
-  写多行 `python3 -c '...'` 时后续行回落到 0 列，会让块提前结束、后面几行被当成
-  顶层内容 → YAML 非法。**宁可写成单行**（`release.yml` 曾因此写坏并阻断发版）。
+### 6. GitHub Actions 维护约束
 
-## 代码里的既有保证（改代码时必须保住）
+**适用范围：** `.github/workflows/*.yml` 的修改、诊断与发布前检查。
 
-- **更新链路的既有保证见「更新链路」一节**（更新检查不得影响 App 运行、
-  `versionCode` 比较、SHA-256 校验、节流写法）。
-- Room 改实体**必须补 `Migration`**（当前 version 2，v1→v2 加了
-  `drinkType` / `hydration`）；**不得使用 `fallbackToDestructiveMigration`** ——
-  饮水记录是用户唯一的数据。
-- 提醒**必须**用 `setExactAndAllowWhileIdle` 调度。**不得**改成 `setAlarmClock` ——
-  2026-09-21 真机实测：后者虽然多一层「系统绝不会调整其传递时间」的承诺，但**同样挡不住
-  国产 ROM 自己的省电策略**（realme UI 会把后台应用的闹钟整体搬到 3 天后，`dumpsys alarm`
-  里 `whenElapsed` 被直接改写，换哪个 API 都一样），却要付出「状态栏常驻闹钟图标」的代价。
-  代价是实打实的、收益是零。免打扰**必须**保留跨午夜（`start > end`）的分支。
-- **不得**再引入常驻前台服务「保活」：进程活着就会被 ROM 冻结，冻结后闹钟投递被丢弃；
-  进程不在，系统才会为投递闹钟把它冷启动起来 —— 保活是反的（见 README「注意事项」）。
-- **OPPO 系（OPPO / realme / 一加）的后台白名单引导必须常驻显示**，
-  **不得**做成「检测到已开启就隐藏」—— 该状态在系统里**探测不到**（加与不加，`dumpsys`
-  里没有任何标志位变化），做成条件显示就会重演「条件永不成立、用户永远看不到」这个坑。
-  同理**不得**把 `isIgnoringBatteryOptimizations()` 的返回值当作「后台已放行」的判据：
-  2026-09-21 实测该值为 `true` 时闹钟照样被延后 3 天。
-- SharedPreferences 的 key 是已发布客户端的持久状态，**不得改名**（改名等于清空
-  老用户的设置）：`user_prefs`、`water_reminder_prefs`、`update_prefs`。
-- 界面上的「今天」**必须**来自 `ui/RememberToday.kt` 的 `rememberToday()`
-  （进入 `STARTED` 立即重算 + 可见期间 60s 轮询）。**不得**把 `LocalDate.now()` 存进
-  `remember` 当快照，**不得**用 `delay(到下一个午夜)` 做跨天刷新 —— `delay()` 走的是
-  `CLOCK_MONOTONIC` / `SystemClock.uptimeMillis()`，熄屏与深度睡眠期间不前进，后台放一夜
-  后 deadline 到不了，界面会一直停在旧日期（0.0.7 及更早的线上缺陷）。
+- 修改 workflow 后、推送前必须用 PyYAML `yaml.safe_load` 本地解析。YAML 1.1 将 `on:` 解析为布尔 `True` 属正常现象。
+- startup failure 若同时满足「没有 job」「run 名称显示文件路径而非 workflow 的 `name:`」「结论为 failure」，表示 GitHub 未能解析 YAML，应先查语法而非构建日志。修改 workflow 的 push 可能令 GitHub 重新注册该 workflow，即使其 `on:` 不匹配也可能出现 startup failure。
+- `run: |` 多行脚本的行缩进必须一致。多行内联 `python3 -c` 容易因缩进让 YAML 块提前结束；优先改为可靠的单行命令或独立脚本。
 
-## 环境与依赖约束
+## 第二部分：测试与验证策略
 
-工具链版本是硬性约束。构建或脚本报错时先怀疑环境，不得靠改版本号、升依赖「修」过去：
+### 7. 总体原则
 
-| 组件 | 版本 | 约束 |
+**适用范围：** 所有代码、资源、构建、脚本、文档和发布配置改动。
+
+- 只运行与改动范围匹配的既有检查，不为「凑验证」增加新工具或脚手架。先确认 JDK、SDK 等环境满足约束，再判断构建错误是否由代码导致。
+- 每项验证结论必须与实际证据相符。未运行、受环境阻塞或只能手工验证的项目要明确标为未验证；不得把局部成功描述为整条链路通过。
+- 输出外发前按第 1 节脱敏。Gradle/AGP/adb 输出可能含本机绝对路径，不得原样贴出。
+
+### 8. 按改动范围选择检查
+
+| 改动范围 | 必需检查 | 可证明的范围与边界 |
 | --- | --- | --- |
-| JDK | 17 或 21 | Gradle 8.11.1 只支持到 Java 23，**24+ 直接不可用**；CI 固定 17 |
-| Android SDK | platform `android-36` | `compileSdk` / `targetSdk` 都是 36；CI 另装 `build-tools;36.0.0` |
-| Gradle | 8.11.1 | 只走 wrapper（wrapper jar 已入库），不得手装、不得随手升版本 |
-| AGP / Kotlin / KSP | 8.10.1 / 2.0.21 / 2.0.21-1.0.28 | 与 Gradle 8.11.1 配套，不要单独升级 |
-| Python | 3.9+ | **只给 `scripts/` 用**，不参与构建 |
+| Kotlin、Android 资源、依赖或构建逻辑 | `./gradlew assembleDebug`（先设置 `JAVA_HOME`；推荐 JDK 17 或 21） | 编译与资源处理成功；不等价于设备运行正确 |
+| `docs/version.json`、版本同步脚本或发布相关元数据 | `python scripts/sync_version.py --check` | 检查版本字段、格式、HTTPS URL、版本名匹配、摘要格式及可用构建元数据；不要求 Manifest 版本等于当前源码版本 |
+| `.github/workflows/*.yml` | PyYAML `yaml.safe_load` 解析 | 检查 YAML 可解析；不代表 GitHub Actions 执行成功 |
+| 应用内更新下载、摘要校验、安装或其存储路径 | 设备手工验证下载 → 校验 → 安装 | 该链路没有自动化测试；未在设备走完整流程时，必须说明未实测 |
+| 更新检查是否请求到 GitHub | 检查成功后查看设备 `shared_prefs/update_prefs.xml` 的 `last_check_at` | 只证明检查请求得到结果，不证明版本比较、下载、校验或安装正确；用户数据须脱敏 |
+| 纯文档改动 | 检查链接、章节交叉引用、命令/字段名与现行约束一致；若触及版本 Manifest 规则，运行其校验命令 | 不要求无关 Android 构建；不得据此声称代码行为已验证 |
 
-- **必须先设置 `JAVA_HOME`** 再跑 CLI 构建；未设置时 `./gradlew` 会直接报
-  `JAVA_HOME is not set` —— 这是环境问题，不是代码坏了。本机具体路径见工作区
-  `.workbuddy-ai/memory/`，不得写进本文件。
-- Android SDK 路径通过 `ANDROID_HOME` / `ANDROID_SDK_ROOT` 或 `local.properties`
-  指定；`local.properties` 不入库，不得把本机绝对路径写进任何入库文件。
-- 依赖版本直接写在 `app/build.gradle.kts` 的 `dependencies` 块里（**仓库没有
-  version catalog**）；仓库来源固定在 `settings.gradle.kts` 的 `google()` /
-  `mavenCentral()`。那里设了 `FAIL_ON_PROJECT_REPOS`，在模块里另写 `repositories`
-  会直接构建失败，不得这么做。
-- 新增第三方依赖前必须先说明用途，以及为什么现有能力（已装的 OkHttp / Room /
-  Compose 等、平台 API）不够用；不得为省几行代码引库（见「本项目常见过度工程」）。
-- `scripts/` 下的 Python 脚本**必须只用标准库**：CI 用裸 `python3` 直接跑
-  `sync_version.py`，没有任何 pip 安装步骤。
-- Java 源码与字节码级别固定 17（`compileOptions` 与 `kotlinOptions.jvmTarget`），
-  `minSdk = 26`：用到的平台 API 必须在 API 26 起可用，更高的要按 `SDK_INT` 分支。
+本仓库没有测试套件；lint 当前只报告、不拦截。除非任务本身明确增加测试，否则不要创建测试脚手架或新检查器。
 
-## 项目检查
+### 9. 高风险行为的专项复核
 
-验证受影响行为时使用这些既有检查，不另造：
+以下项目在对应代码被触及时，除通用构建检查外还必须按契约复核；超出自动检查能力的部分须明确说明：
 
-| 检查 | 命令 | 覆盖什么 |
-| --- | --- | --- |
-| 编译 | `./gradlew assembleDebug`（JDK 17–23，推荐 17 或 21） | 任何 Kotlin / 资源 / 依赖改动 |
-| Manifest 校验 | `python scripts/sync_version.py --check` | `versionCode` 合法且不高于源码、`versionName` 格式、`apkUrl` 必须是 https 且与版本名匹配、`sha256` 格式及可用的构建元数据；不要求 Manifest 版本等于源码版本 |
-| 应用内更新 | 手工：装到设备上走一遍下载 → 校验 → 安装 | 只能手工验，见下 |
+- **更新协议：** 检查 URL、顶层字段、逐字段校验、整数版本比较、HTTPS 与 SHA-256 格式处理、失败只返回 `Failed`、12 小时节流仅在成功取到结果后写入。
+- **下载与安装：** 检查私有目录与 FileProvider 路径一致、广播注册为 `RECEIVER_EXPORTED`、按 downloadId/DownloadManager 状态复核、安装前 SHA-256 校验和失败删包。完整链路需设备手工走通。
+- **Room 与偏好设置：** 实体变更检查 Migration 与数据库版本；确认没有 destructive migration；确认已发布偏好文件名/key 保持兼容。
+- **闹钟与日期：** 检查 `setExactAndAllowWhileIdle`、跨午夜免打扰分支、无前台保活服务、OPPO 系引导常驻显示，以及 `rememberToday()` 生命周期刷新方案。
+- **发布元数据：** 检查机器字段未被手工改动、版本名/code 顺序正确、beta 通道不写 Manifest。发布 tag/push 仍需单独授权。
 
-- 改过 `.github/workflows/*.yml` 后、推送前，必须本地用 pyyaml 解析一遍
-  （`yaml.safe_load`；YAML 1.1 会把 `on:` 解析成布尔 `True`，属正常现象）。
-  装了 pyyaml 的解释器路径同样见工作区 `.workbuddy-ai/memory/`。
-- 想确认应用内更新真的请求到了 GitHub：自动检查成功时才会写
-  `shared_prefs/update_prefs.xml` 的 `last_check_at`，看这个文件即可。
-  **它只证明「请求到了」，不证明版本比较与下载校验逻辑对** ——
-  下载 → 校验 → 安装这段没有自动化测试，只能装到设备上手动走一遍；
-  没走就必须在汇报里明说未实测，不得用「请求成功」冒充整条链路已验证。
-- lint 目前只报告不拦截；仓库没有测试套件。不得为了「凑验证」新建测试脚手架，
-  除非任务本身就是加测试。
+## 维护本文件
 
-## 本项目常见过度工程（明确不做）
-
-- 不引入 DI 框架（Hilt / Koin）、不把 SharedPreferences 迁 DataStore、不把 OkHttp 换
-  Retrofit、不给 Room 加仓库抽象层 —— 除非任务明确要求。
-- 不加「以防万一」的重试、缓存、超时、抽象层。
-- 不新建只为了「验证自己刚才改动」的检查器；要验证就用上面列的检查。
-- 不虚构文件清单或验证证据来显得精确；不确定就查证或如实说。
+当代码、CI、发布流程或兼容契约发生经确认的变化时，同步更新本文件及必要的 README 说明。只删除已被实现和证据明确取代的规则；遇到尚未确认的实现差异，先查证再改文档。保持规则有明确适用范围、具体行为与对应验证方式，避免写成无法执行的口号。
