@@ -89,12 +89,16 @@ class UpdateChecker(private val context: Context) {
 
             val body = client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) return@withContext UpdateCheckResult.Failed
-                // 只在真的问到了才记时间，否则一次断网会把重试也压掉 12 小时
-                prefs.edit().putLong(KEY_LAST_CHECK, System.currentTimeMillis()).apply()
                 response.body?.string() ?: return@withContext UpdateCheckResult.Failed
             }
 
-            parseVersionJson(body)
+            // 只在真的得到检查结果（非 Failed）才记时间；2xx 但 JSON 坏掉也算失败，
+            // 不能把它记成「已检查」，否则坏清单会压住后续重试 12 小时
+            val result = parseVersionJson(body)
+            if (result != UpdateCheckResult.Failed) {
+                prefs.edit().putLong(KEY_LAST_CHECK, System.currentTimeMillis()).apply()
+            }
+            result
         } catch (e: Exception) {
             e.printStackTrace()
             UpdateCheckResult.Failed
