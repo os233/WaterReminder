@@ -537,8 +537,10 @@ fun WeeklyStatsCard(weekData: List<Pair<LocalDate, Int>>, goal: Int, today: Loca
                         )
                     }
                 }
-                // 目标参考线（虚线）
-                val goalY = size.height * (goal / maxVal)
+                // 目标参考线（虚线）。柱子自底向上生长（topLeft.y = H - barHeight），
+                // 线的高度同样要从底部量：H·(1 − goal/maxVal)。写成 H·(goal/maxVal)
+                // 是它的上下镜像，只有 goal 恰为 maxVal 的一半时才碰巧重合。
+                val goalY = size.height * (1 - goal / maxVal)
                 drawLine(
                     color = goalLineColor,
                     start = Offset(0f, goalY),

@@ -123,23 +123,24 @@ class MainActivity : ComponentActivity() {
                         }
                     )
                 }
-            }
 
-            // 美化后的更新弹窗
-            updateInfo?.let { info ->
-                UpdateDialog(
-                    info = info,
-                    onDismiss = { if (!info.forceUpdate) updateInfo = null },
-                    onConfirm = {
-                        val checker = UpdateChecker(this@MainActivity)
-                        if (!checker.checkInstallPermission()) {
-                            checker.requestInstallPermission()
-                        } else {
-                            checker.downloadAndInstall(info.apkUrl, info.sha256)
-                            updateInfo = null
+                // 美化后的更新弹窗：必须留在主题作用域内 —— 挪出去的话 colorScheme 全部落到
+                // Material3 默认浅色方案（深色模式弹白底窗、主色变默认紫），且没有任何报错
+                updateInfo?.let { info ->
+                    UpdateDialog(
+                        info = info,
+                        onDismiss = { if (!info.forceUpdate) updateInfo = null },
+                        onConfirm = {
+                            val checker = UpdateChecker(this@MainActivity)
+                            if (!checker.checkInstallPermission()) {
+                                checker.requestInstallPermission()
+                            } else {
+                                checker.downloadAndInstall(info.apkUrl, info.sha256)
+                                updateInfo = null
+                            }
                         }
-                    }
-                )
+                    )
+                }
             }
         }
     }
