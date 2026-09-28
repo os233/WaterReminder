@@ -105,7 +105,7 @@ fun WaterReminderScreen(
     )
 
     // 连续天数依赖「今天」：必须把 today 作为 key，否则跨天后仍按旧日期计算
-    val streak = remember(allTotals, goal, today) { computeStreak(allTotals, goal) }
+    val streak = remember(allTotals, goal, today) { computeStreak(allTotals, goal, today) }
 
     // 首次达成今日目标时播放一次庆祝动画（本次会话内不重复）
     val goalReached = (todayTotal ?: 0) >= goal
@@ -678,11 +678,11 @@ private fun recordDrink(
     }
 }
 
-/** 连续达标天数：今天未达标则从昨天起算，不因"还没喝"而清零 */
-private fun computeStreak(totals: List<DailyTotal>, goal: Int): Int {
+/** 连续达标天数：today 未达标则从昨天起算，不因"还没喝"而清零 */
+private fun computeStreak(totals: List<DailyTotal>, goal: Int, today: LocalDate): Int {
     if (totals.isEmpty()) return 0
     val map = totals.associate { it.recordDate to it.total }
-    var date = LocalDate.now()
+    var date = today
     if ((map[date.toString()] ?: 0) < goal) {
         date = date.minusDays(1)
     }
