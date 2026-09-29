@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- 复用 ic_water_drop 的 24dp 水滴路径，放大并按外接框居中到 108dp 画布，
+         水滴整体落在 66dp 安全区内 -->
+    <group
+        android:scaleX="2.2"
+        android:scaleY="2.2"
+        android:translateX="27.6"
+        android:translateY="29.4">
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M12,2.69l5.66,5.66c3.12,3.12 3.12,8.19 0,11.31 -1.5,1.5 -3.54,2.34 -5.66,2.34s-4.16,-0.84 -5.66,-2.34c-3.12,-3.12 -3.12,-8.19 0,-11.31L12,2.69z" />
+    </group>
+</vector>

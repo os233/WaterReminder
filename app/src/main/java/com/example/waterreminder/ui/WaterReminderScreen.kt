@@ -20,9 +20,11 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Flag
@@ -41,10 +43,13 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -126,361 +131,375 @@ fun WaterReminderScreen(
 
     val compact = isCompactViewport()
     val heroCircle = if (compact) 160.dp else 200.dp
+    // 记录撤销：与历史页同款「删除/撤销」Snackbar 模式（HistoryScreen.deleteRecord）
+    val snackbarHostState = remember { SnackbarHostState() }
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            // edge-to-edge：避开状态栏、手势条与刘海区域
-            .windowInsetsPadding(WindowInsets.safeDrawing)
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp)
-    ) {
-        // Header
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = if (compact) 12.dp else 20.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column {
-                Text(
-                    text = "今日饮水",
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onBackground
-                )
-                Text(
-                    text = currentDate,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 13.sp
-                )
-            }
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (streak > 0) {
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = MaterialTheme.colorScheme.tertiaryContainer
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.LocalFireDepartment,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onTertiaryContainer,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "连续 $streak 天",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onTertiaryContainer
-                            )
-                        }
-                    }
-                }
-                FilledTonalIconButton(
-                    onClick = onHistoryClick,
-                    modifier = Modifier.size(48.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.DateRange,
-                        contentDescription = "历史记录",
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-            }
-        }
-
-        // Progress Card
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = if (compact) 16.dp else 24.dp),
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(
-                        brush = Brush.linearGradient(
-                            colors = listOf(
-                                MaterialTheme.colorScheme.primaryContainer,
-                                MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                            )
-                        ),
-                        shape = RoundedCornerShape(24.dp)
-                    )
-                    .padding(if (compact) 16.dp else 24.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Box(
-                        modifier = Modifier.size(heroCircle),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        // 外圈装饰
-                        Box(
-                            modifier = Modifier
-                                .size(heroCircle)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.5f))
-                        )
-                        CircularProgressIndicator(
-                            progress = { animatedProgress },
-                            modifier = Modifier.size(if (compact) 134.dp else 170.dp),
-                            strokeWidth = if (compact) 10.dp else 14.dp,
-                            color = MaterialTheme.colorScheme.primary,
-                            trackColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f)
-                        )
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.WaterDrop,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(if (compact) 20.dp else 28.dp)
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "${todayTotal ?: 0}",
-                                fontSize = if (compact) 28.sp else 40.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
-                            // 点击可修改每日目标
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.clickable { showGoalDialog = true }
-                            ) {
-                                Text(
-                                    text = "/ $goal ml",
-                                    fontSize = 14.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Spacer(modifier = Modifier.width(3.dp))
-                                Icon(
-                                    imageVector = Icons.Default.Edit,
-                                    contentDescription = "修改目标",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(13.dp)
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                            ) {
-                                Text(
-                                    text = "${(percent * 100).toInt()}%",
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
-                                )
-                            }
-                        }
-                        // 达标庆祝
-                        androidx.compose.animation.AnimatedVisibility(
-                            visible = celebrate,
-                            enter = scaleIn(initialScale = 0.4f) + fadeIn(),
-                            exit = scaleOut(targetScale = 1.15f) + fadeOut(),
-                            modifier = Modifier.align(Alignment.Center)
-                        ) {
-                            Surface(
-                                shape = RoundedCornerShape(18.dp),
-                                color = MaterialTheme.colorScheme.primary,
-                                shadowElevation = 6.dp
-                            ) {
-                                Text(
-                                    text = "🎉 目标达成！",
-                                    color = Color.White,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 18.sp,
-                                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp)
-                                )
-                            }
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(if (compact) 10.dp else 16.dp))
-                    val statusText = when {
-                        (todayTotal ?: 0) >= goal -> "🎉 目标达成！太棒了！"
-                        (todayTotal ?: 0) >= goal / 2 -> "💪 已经完成一半了！"
-                        (todayTotal ?: 0) > 0 -> "👍 继续加油！"
-                        else -> "💧 开始喝水吧！"
-                    }
-                    val statusBg = if ((todayTotal ?: 0) >= goal)
-                        MaterialTheme.colorScheme.tertiaryContainer
-                    else
-                        MaterialTheme.colorScheme.surface.copy(alpha = 0.7f)
-                    val statusColor = if ((todayTotal ?: 0) >= goal)
-                        MaterialTheme.colorScheme.onTertiaryContainer
-                    else
-                        MaterialTheme.colorScheme.onPrimaryContainer
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = statusBg
-                    ) {
-                        Text(
-                            text = statusText,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = statusColor,
-                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp)
-                        )
-                    }
-                }
-            }
-        }
-
-        // 饮料类型选择
-        Text(
-            text = "选择饮料",
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onBackground,
-            modifier = Modifier.padding(bottom = 8.dp)
-        )
+    // Scaffold 负责避让状态栏/手势条并承载记录撤销的 Snackbar；
+    // 「今天」仍由 rememberToday() 驱动，与本容器无关
+    Scaffold(
+        modifier = modifier,
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        containerColor = MaterialTheme.colorScheme.background
+    ) { padding ->
         Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp)
         ) {
-            // 一行最多 3 个：5 个挤一行时每个只剩约 60dp，图标加"气泡水"会被迫换行
-            DrinkType.entries.chunked(3).forEach { rowDrinks ->
+            // Header
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = if (compact) 12.dp else 20.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "今日饮水",
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                    Text(
+                        text = currentDate,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 13.sp
+                    )
+                }
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    rowDrinks.forEach { drink ->
-                        FilterChip(
-                            selected = selectedDrink == drink,
-                            onClick = { selectedDrink = drink },
-                            label = {
-                                Text(
-                                    text = drink.label,
-                                    fontSize = 13.sp,
-                                    maxLines = 1,
-                                    softWrap = false
-                                )
-                            },
-                            leadingIcon = {
+                    if (streak > 0) {
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.tertiaryContainer
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
                                 Icon(
-                                    imageVector = drink.icon,
+                                    imageVector = Icons.Filled.LocalFireDepartment,
                                     contentDescription = null,
-                                    tint = drink.color,
-                                    modifier = Modifier.size(18.dp)
+                                    tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                    modifier = Modifier.size(16.dp)
                                 )
-                            },
-                            modifier = Modifier.weight(1f)
-                        )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "连续 $streak 天",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer
+                                )
+                            }
+                        }
                     }
-                    // 补空位，让最后一行的 chip 与上一行列宽对齐
-                    repeat(3 - rowDrinks.size) {
-                        Spacer(modifier = Modifier.weight(1f))
+                    FilledTonalIconButton(
+                        onClick = onHistoryClick,
+                        modifier = Modifier.size(48.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.DateRange,
+                            contentDescription = "历史记录",
+                            modifier = Modifier.size(24.dp)
+                        )
                     }
                 }
             }
-        }
 
-        // 快速记录按钮 - 大卡片式
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            WaterAmountCard(
-                amount = 200,
-                icon = selectedDrink.icon,
-                color = selectedDrink.color,
-                onClick = { recordDrink(scope, dao, selectedDrink, 200) },
-                modifier = Modifier.weight(1f)
-            )
-            WaterAmountCard(
-                amount = 350,
-                icon = selectedDrink.icon,
-                color = selectedDrink.color,
-                onClick = { recordDrink(scope, dao, selectedDrink, 350) },
-                modifier = Modifier.weight(1f)
-            )
-            WaterAmountCard(
-                amount = 500,
-                icon = selectedDrink.icon,
-                color = selectedDrink.color,
-                onClick = { recordDrink(scope, dao, selectedDrink, 500) },
-                modifier = Modifier.weight(1f)
-            )
-        }
+            // Progress Card
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = if (compact) 16.dp else 24.dp),
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            brush = Brush.linearGradient(
+                                colors = listOf(
+                                    MaterialTheme.colorScheme.primaryContainer,
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                                )
+                            ),
+                            shape = RoundedCornerShape(24.dp)
+                        )
+                        .padding(if (compact) 16.dp else 24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Box(
+                            modifier = Modifier.size(heroCircle),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            // 外圈装饰
+                            Box(
+                                modifier = Modifier
+                                    .size(heroCircle)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.5f))
+                            )
+                            WaterProgressCircle(
+                                progress = animatedProgress,
+                                modifier = Modifier.size(if (compact) 134.dp else 170.dp)
+                            )
+                            // 中央信息浮层：水位涨过中部后数字会压在水色上，
+                            // 一层半透明 surface 胶囊保证任意进度、任意主题下都可读
+                            Surface(
+                                shape = RoundedCornerShape(24.dp),
+                                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f)
+                            ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.WaterDrop,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(if (compact) 20.dp else 28.dp)
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = "${todayTotal ?: 0}",
+                                        fontSize = if (compact) 28.sp else 40.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                    // 点击可修改每日目标
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.clickable { showGoalDialog = true }
+                                    ) {
+                                        Text(
+                                            text = "/ $goal ml",
+                                            fontSize = 14.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Spacer(modifier = Modifier.width(3.dp))
+                                        Icon(
+                                            imageVector = Icons.Default.Edit,
+                                            contentDescription = "修改目标",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(13.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                                    ) {
+                                        Text(
+                                            text = "${(percent * 100).toInt()}%",
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                                        )
+                                    }
+                                }
+                            }
+                            // 达标庆祝
+                            androidx.compose.animation.AnimatedVisibility(
+                                visible = celebrate,
+                                enter = scaleIn(initialScale = 0.4f) + fadeIn(),
+                                exit = scaleOut(targetScale = 1.15f) + fadeOut(),
+                                modifier = Modifier.align(Alignment.Center)
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(18.dp),
+                                    color = MaterialTheme.colorScheme.primary,
+                                    shadowElevation = 6.dp
+                                ) {
+                                    Text(
+                                        text = "🎉 目标达成！",
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 18.sp,
+                                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp)
+                                    )
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(if (compact) 10.dp else 16.dp))
+                        val statusText = when {
+                            (todayTotal ?: 0) >= goal -> "🎉 目标达成！太棒了！"
+                            (todayTotal ?: 0) >= goal / 2 -> "💪 已经完成一半了！"
+                            (todayTotal ?: 0) > 0 -> "👍 继续加油！"
+                            else -> "💧 开始喝水吧！"
+                        }
+                        val statusBg = if ((todayTotal ?: 0) >= goal)
+                            MaterialTheme.colorScheme.tertiaryContainer
+                        else
+                            MaterialTheme.colorScheme.surface.copy(alpha = 0.7f)
+                        val statusColor = if ((todayTotal ?: 0) >= goal)
+                            MaterialTheme.colorScheme.onTertiaryContainer
+                        else
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = statusBg
+                        ) {
+                            Text(
+                                text = statusText,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = statusColor,
+                                modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp)
+                            )
+                        }
+                    }
+                }
+            }
 
-        // 自定义按钮
-        OutlinedButton(
-            onClick = { showCustomDialog = true },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 20.dp)
-                .height(52.dp),
-            shape = RoundedCornerShape(16.dp),
-            colors = ButtonDefaults.outlinedButtonColors(
-                contentColor = MaterialTheme.colorScheme.primary
-            ),
-            border = ButtonDefaults.outlinedButtonBorder(enabled = true).copy(
-                brush = Brush.horizontalGradient(
-                    listOf(
-                        MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
-                        MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
+            // 饮料类型选择
+            Text(
+                text = "选择饮料",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // 一行最多 3 个：5 个挤一行时每个只剩约 60dp，图标加"气泡水"会被迫换行
+                DrinkType.entries.chunked(3).forEach { rowDrinks ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        rowDrinks.forEach { drink ->
+                            FilterChip(
+                                selected = selectedDrink == drink,
+                                onClick = { selectedDrink = drink },
+                                label = {
+                                    Text(
+                                        text = drink.label,
+                                        fontSize = 13.sp,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = drink.icon,
+                                        contentDescription = null,
+                                        tint = drink.color,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                        // 补空位，让最后一行的 chip 与上一行列宽对齐
+                        repeat(3 - rowDrinks.size) {
+                            Spacer(modifier = Modifier.weight(1f))
+                        }
+                    }
+                }
+            }
+
+            // 快速记录按钮 - 大卡片式
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                WaterAmountCard(
+                    amount = 200,
+                    icon = selectedDrink.icon,
+                    color = selectedDrink.color,
+                    onClick = { recordDrink(scope, dao, selectedDrink, 200, snackbarHostState) },
+                    modifier = Modifier.weight(1f)
+                )
+                WaterAmountCard(
+                    amount = 350,
+                    icon = selectedDrink.icon,
+                    color = selectedDrink.color,
+                    onClick = { recordDrink(scope, dao, selectedDrink, 350, snackbarHostState) },
+                    modifier = Modifier.weight(1f)
+                )
+                WaterAmountCard(
+                    amount = 500,
+                    icon = selectedDrink.icon,
+                    color = selectedDrink.color,
+                    onClick = { recordDrink(scope, dao, selectedDrink, 500, snackbarHostState) },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            // 自定义按钮
+            OutlinedButton(
+                onClick = { showCustomDialog = true },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 20.dp)
+                    .height(52.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = MaterialTheme.colorScheme.primary
+                ),
+                border = ButtonDefaults.outlinedButtonBorder(enabled = true).copy(
+                    brush = Brush.horizontalGradient(
+                        listOf(
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
+                        )
                     )
                 )
-            )
-        ) {
-            Icon(
-                imageVector = Icons.Default.Add,
-                contentDescription = null,
-                modifier = Modifier.size(18.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("自定义水量", fontSize = 15.sp, fontWeight = FontWeight.Medium)
-        }
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("自定义水量", fontSize = 15.sp, fontWeight = FontWeight.Medium)
+            }
 
-        // 提醒区域
-        ReminderSection()
+            // 提醒区域
+            ReminderSection()
 
-        // 页脚：关于 / 手动检查更新。
-        // 放在底部而不是顶栏：窄屏（360dp）下顶栏已经被「日期 + 连续达标徽章 + 历史按钮」
-        // 占满，再加一个按钮会被挤爆；追加到 Column 末尾不会改变上面快速记录按钮的位置。
-        TextButton(
-            onClick = { showAboutDialog = true },
-            modifier = Modifier
-                .align(Alignment.CenterHorizontally)
-                .padding(top = if (compact) 4.dp else 8.dp),
-            colors = ButtonDefaults.textButtonColors(
-                contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        ) {
-            Icon(
-                imageVector = Icons.Outlined.Info,
-                contentDescription = null,
-                modifier = Modifier.size(16.dp)
-            )
-            Spacer(modifier = Modifier.width(6.dp))
-            Text("关于", fontSize = 14.sp)
+            // 页脚：关于 / 手动检查更新。
+            // 放在底部而不是顶栏：窄屏（360dp）下顶栏已经被「日期 + 连续达标徽章 + 历史按钮」
+            // 占满，再加一个按钮会被挤爆；追加到 Column 末尾不会改变上面快速记录按钮的位置。
+            TextButton(
+                onClick = { showAboutDialog = true },
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .padding(top = if (compact) 4.dp else 8.dp),
+                colors = ButtonDefaults.textButtonColors(
+                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Info,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("关于", fontSize = 14.sp)
+            }
         }
     }
 
     // 自定义水量弹窗
     if (showCustomDialog) {
+        // 弹窗每次打开都从零开始校验；remember 在弹窗关闭时随之释放
+        var amountError by remember { mutableStateOf(false) }
         AlertDialog(
             onDismissRequest = { showCustomDialog = false },
             icon = {
@@ -495,13 +514,23 @@ fun WaterReminderScreen(
             text = {
                 OutlinedTextField(
                     value = customAmount,
-                    onValueChange = { customAmount = it.filter { c -> c.isDigit() } },
+                    onValueChange = {
+                        customAmount = it.filter { c -> c.isDigit() }
+                        amountError = false
+                    },
                     label = { Text("${selectedDrink.label}量 (ml)") },
+                    isError = amountError,
                     supportingText = {
-                        if (selectedDrink.hydration < 1.0) {
+                        if (amountError) {
+                            Text(
+                                "请输入 1 – 5000 的整数",
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        } else if (selectedDrink.hydration < 1.0) {
                             Text("按水合系数 ${(selectedDrink.hydration * 100).toInt()}% 折算计入总量")
                         }
                     },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     singleLine = true,
                     leadingIcon = {
                         Icon(selectedDrink.icon, contentDescription = null)
@@ -511,13 +540,15 @@ fun WaterReminderScreen(
             },
             confirmButton = {
                 TextButton(onClick = {
-                    customAmount.toIntOrNull()?.let {
-                        if (it > 0 && it <= 5000) {
-                            recordDrink(scope, dao, selectedDrink, it)
-                        }
+                    val amount = customAmount.toIntOrNull()
+                    // 非法输入不再静默丢弃：标红报错并留在弹窗里改
+                    if (amount != null && amount in 1..5000) {
+                        recordDrink(scope, dao, selectedDrink, amount, snackbarHostState)
+                        showCustomDialog = false
+                        customAmount = ""
+                    } else {
+                        amountError = true
                     }
-                    showCustomDialog = false
-                    customAmount = ""
                 }) {
                     Text("确定")
                 }
@@ -661,20 +692,33 @@ private fun AboutDialog(
     )
 }
 
+/**
+ * 记一笔饮水，随后弹 Snackbar 提供「撤销」——快速记录卡片热区大，误触后
+ * 不应逼用户去历史页长按找回。撤销按插入返回的行 id 精确删除，不影响其他记录。
+ */
 private fun recordDrink(
     scope: kotlinx.coroutines.CoroutineScope,
     dao: WaterRecordDao,
     drink: DrinkType,
-    amount: Int
+    amount: Int,
+    snackbarHostState: SnackbarHostState
 ) {
     scope.launch {
-        dao.insert(
+        val id = dao.insert(
             WaterRecord(
                 amount = amount,
                 drinkType = drink.id,
                 hydration = drink.hydration
             )
         )
+        val result = snackbarHostState.showSnackbar(
+            message = "已记录 ${drink.label} $amount ml",
+            actionLabel = "撤销",
+            duration = SnackbarDuration.Short
+        )
+        if (result == SnackbarResult.ActionPerformed) {
+            dao.deleteById(id)
+        }
     }
 }
 
@@ -707,9 +751,12 @@ fun WaterAmountCard(
         targetValue = if (pressed) 0.95f else 1f,
         label = "scale"
     )
+    val haptic = LocalHapticFeedback.current
 
     Card(
         onClick = {
+            // 高频核心操作：轻震动确认「记上了」，仅视觉的缩放脉冲在口袋里感知不到
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
             pressed = true
             onClick()
         },
@@ -882,7 +929,7 @@ fun ReminderSection() {
             }
             FilledTonalIconButton(
                 onClick = { showDialog = true },
-                modifier = Modifier.size(40.dp)
+                modifier = Modifier.size(48.dp)
             ) {
                 Icon(
                     imageVector = Icons.Default.Settings,
@@ -911,18 +958,18 @@ fun ReminderSection() {
                     Text("选择每隔多久提醒一次：", modifier = Modifier.padding(bottom = 12.dp))
                     listOf(
                         0 to ("🔕 关闭提醒" to MaterialTheme.colorScheme.error),
-                        1 to ("1️⃣ 每小时提醒" to MaterialTheme.colorScheme.primary),
-                        2 to ("2️⃣ 每2小时提醒" to MaterialTheme.colorScheme.primary),
-                        3 to ("3️⃣ 每3小时提醒" to MaterialTheme.colorScheme.primary)
+                        1 to ("每小时提醒" to MaterialTheme.colorScheme.primary),
+                        2 to ("每2小时提醒" to MaterialTheme.colorScheme.primary),
+                        3 to ("每3小时提醒" to MaterialTheme.colorScheme.primary)
                     ).forEach { (hours, pair) ->
                         val (label, color) = pair
                         val isSelected = selectedInterval == hours
                         Card(
                             onClick = {
                                 // 只在真的排上时才改本地状态；排不上（精确闹钟权限被拒）时保持原状，
-                                // 卡片才不会显示一个系统里并不存在的提醒
+                                // 卡片才不会显示一个系统里并不存在的提醒。
+                                // 不自动关弹窗：选完间隔通常还要顺手设免打扰
                                 if (setReminder(context, hours)) selectedInterval = hours
-                                showDialog = false
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -956,7 +1003,7 @@ fun ReminderSection() {
                                 )
                                 if (isSelected) {
                                     Icon(
-                                        imageVector = Icons.Default.Add,
+                                        imageVector = Icons.Default.Check,
                                         contentDescription = null,
                                         tint = color,
                                         modifier = Modifier.size(20.dp)

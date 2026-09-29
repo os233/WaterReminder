@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 深色模式的冷启动窗口背景，与 Compose 侧 DarkColorScheme.background 一致；
+         没有它，深色用户每次冷启动会先闪一下浅色 -->
+    <color name="background">#1A1C1E</color>
+</resources>

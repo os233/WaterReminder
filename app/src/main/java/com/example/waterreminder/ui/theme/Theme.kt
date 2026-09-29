@@ -8,6 +8,8 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 
@@ -63,11 +65,25 @@ private val LightColorScheme = lightColorScheme(
     outline = Color(0xFFCBD5E1)
 )
 
+/**
+ * Material 3 没有内置 success 语义色，而历史页多处需要「达标绿」。
+ * 收敛到这里统一下发，避免界面里散落硬编码绿色；深色下用浅一档保证可读。
+ */
+data class ExtendedColors(val success: Color)
+
+private val LocalExtendedColors = staticCompositionLocalOf {
+    ExtendedColors(success = Color(0xFF4CAF50))
+}
+
+val MaterialTheme.successColor: Color
+    @Composable get() = LocalExtendedColors.current.success
+
 @Composable
 fun WaterReminderTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    // Material You：Android 12+ 跟随系统壁纸取色，低版本回退到内置蓝色主题
-    dynamicColor: Boolean = true,
+    // 固定品牌蓝：界面里饮料色/达标绿等身份色是固定的，动态取色会与它们打架，
+    // 统一用内置蓝色主题；参数保留便于预览调试
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {
@@ -78,9 +94,15 @@ fun WaterReminderTheme(
         darkTheme -> DarkColorScheme
         else -> LightColorScheme
     }
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = Typography,
-        content = content
-    )
+    CompositionLocalProvider(
+        LocalExtendedColors provides ExtendedColors(
+            success = if (darkTheme) Color(0xFF81C784) else Color(0xFF4CAF50)
+        )
+    ) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = Typography,
+            content = content
+        )
+    }
 }

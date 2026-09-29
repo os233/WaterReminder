@@ -8,11 +8,15 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface WaterRecordDao {
+    // 返回自增行 id：首页「撤销本次记录」需要按 id 精确删除刚插入的那条
     @Insert
-    suspend fun insert(record: WaterRecord)
+    suspend fun insert(record: WaterRecord): Long
 
     @Delete
     suspend fun delete(record: WaterRecord)
+
+    @Query("DELETE FROM water_records WHERE id = :id")
+    suspend fun deleteById(id: Long)
 
     // 总量按"水合系数"折算：SUM(amount * hydration)，结果取整。
     // ⚠️ date 必须由调用方显式传入，不能给 `LocalDate.now()` 默认值：默认值只在调用那一刻

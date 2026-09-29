@@ -39,6 +39,8 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -48,6 +50,7 @@ import com.example.waterreminder.data.DrinkType
 import com.example.waterreminder.data.UserPrefs
 import com.example.waterreminder.data.WaterRecord
 import com.example.waterreminder.data.WaterRecordDao
+import com.example.waterreminder.ui.theme.successColor
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.YearMonth
@@ -251,7 +254,7 @@ fun HistoryScreen(
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
-                                text = "（长按删除单条）",
+                                text = "（左滑或长按删除单条）",
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(start = 6.dp)
@@ -312,10 +315,17 @@ fun HistoryScreen(
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             selectedRecords.forEach { record ->
-                                HistoryRecordItem(
-                                    record = record,
-                                    onLongClick = { deleteRecord(record) }
-                                )
+                                // key 必不可少：列表无 LazyColumn item key 时，删除后上移的条目
+                                // 会复用同位组合位并继承「已滑开」的 dismiss 状态，
+                                // 触发级联 confirm 误删下一行（实测一次滑动删掉两条）。
+                                // 绑定 record.id 后上移条目拿到全新 Settled 状态。
+                                key(record.id) {
+                                    SwipeDismissRecordItem(
+                                        record = record,
+                                        onDelete = { deleteRecord(record) },
+                                        onLongClick = { deleteRecord(record) }
+                                    )
+                                }
                             }
                         }
                     }
@@ -444,7 +454,7 @@ fun DateSummaryCard(
                             progress = { percent },
                             modifier = Modifier.size(if (compact) 38.dp else 48.dp),
                             strokeWidth = 4.dp,
-                            color = if (percent >= 1f) Color(0xFF4CAF50) else MaterialTheme.colorScheme.primary,
+                            color = if (percent >= 1f) MaterialTheme.successColor else MaterialTheme.colorScheme.primary,
                             trackColor = MaterialTheme.colorScheme.surfaceVariant
                         )
                         Text(
@@ -465,7 +475,7 @@ fun DateSummaryCard(
                         .fillMaxWidth()
                         .height(6.dp)
                         .clip(RoundedCornerShape(3.dp)),
-                    color = if (percent >= 1f) Color(0xFF4CAF50) else MaterialTheme.colorScheme.primary,
+                    color = if (percent >= 1f) MaterialTheme.successColor else MaterialTheme.colorScheme.primary,
                     trackColor = MaterialTheme.colorScheme.surfaceVariant
                 )
             }
@@ -478,7 +488,7 @@ fun WeeklyStatsCard(weekData: List<Pair<LocalDate, Int>>, goal: Int, today: Loca
     val reachedCount = weekData.count { it.second >= goal }
     val validDays = weekData.count { it.second > 0 }
     val avg = if (validDays > 0) weekData.sumOf { it.second } / validDays else 0
-    val reachedColor = Color(0xFF4CAF50)
+    val reachedColor = MaterialTheme.successColor
     val barColor = MaterialTheme.colorScheme.primary
     val goalLineColor = MaterialTheme.colorScheme.outline
     val labelColor = MaterialTheme.colorScheme.onSurfaceVariant
@@ -523,6 +533,12 @@ fun WeeklyStatsCard(weekData: List<Pair<LocalDate, Int>>, goal: Int, today: Loca
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(100.dp)
+                    // Canvas 对 TalkBack 是不透明的；给一句概述代替逐日播报
+                    .semantics {
+                        contentDescription =
+                            "最近 7 天饮水柱状图：达标 $reachedCount 天" +
+                                if (avg > 0) "，有记录日均 $avg 毫升" else ""
+                    }
             ) {
                 val maxVal = maxOf(goal.toFloat(), (weekData.maxOfOrNull { it.second } ?: 0).toFloat()) * 1.15f
                 val barWidth = size.width / weekData.size
@@ -643,7 +659,7 @@ fun CalendarView(
             ) {
                 FilledTonalIconButton(
                     onClick = { navigated = true; currentMonth = currentMonth.minusMonths(1) },
-                    modifier = Modifier.size(36.dp)
+                    modifier = Modifier.size(48.dp)
                 ) {
                     Text(
                         "‹",
@@ -672,7 +688,7 @@ fun CalendarView(
 
                 FilledTonalIconButton(
                     onClick = { navigated = true; currentMonth = currentMonth.plusMonths(1) },
-                    modifier = Modifier.size(36.dp)
+                    modifier = Modifier.size(48.dp)
                 ) {
                     Text(
                         "›",
@@ -746,7 +762,7 @@ fun CalendarView(
                         modifier = Modifier
                             .size(8.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFF4CAF50))
+                            .background(MaterialTheme.successColor)
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
@@ -867,14 +883,74 @@ fun CalendarDayCell(
                         .clip(RoundedCornerShape(2.dp))
                         .background(
                             if (isSelected) {
-                                if (isGoalReached) Color(0xFF81C784) else MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f)
+                                if (isGoalReached) MaterialTheme.successColor else MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f)
                             } else {
-                                if (isGoalReached) Color(0xFF4CAF50) else MaterialTheme.colorScheme.tertiary
+                                if (isGoalReached) MaterialTheme.successColor else MaterialTheme.colorScheme.tertiary
                             }
                         )
                 )
             }
         }
+    }
+}
+
+/**
+ * 左滑删除：比藏在长按里的入口好发现；删除动作复用 [HistoryScreen.deleteRecord] 的
+ * 「删除 + Snackbar 撤销」链路，长按入口保留。
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SwipeDismissRecordItem(
+    record: WaterRecord,
+    onDelete: () -> Unit,
+    onLongClick: () -> Unit
+) {
+    // confirmValueChange 闭包在 remember 里只捕获一次，列表复用组合位时会拿到旧 record；
+    // 经 rememberUpdatedState 转发保证每次都调用最新的 onDelete
+    val currentOnDelete by rememberUpdatedState(onDelete)
+    val dismissState = rememberSwipeToDismissBoxState(
+        confirmValueChange = { value ->
+            // 返回 true 让手势完整落位；列表随后随 Flow 移除该项，
+            // 撤销重插的是新的组合项，不会残留已滑动状态
+            if (value == SwipeToDismissBoxValue.EndToStart) {
+                currentOnDelete()
+                true
+            } else {
+                false
+            }
+        }
+    )
+    SwipeToDismissBox(
+        state = dismissState,
+        enableDismissFromStartToEnd = false,
+        backgroundContent = {
+            // 记录卡片是半透明色，若红色背景常驻绘制会在未滑动时透过卡片显形；
+            // 只在滑动进行中/已滑开（targetValue 离开 Settled）时才画红底
+            val revealed = dismissState.targetValue != SwipeToDismissBoxValue.Settled
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(
+                        if (revealed) MaterialTheme.colorScheme.errorContainer
+                        else Color.Transparent
+                    ),
+                contentAlignment = Alignment.CenterEnd
+            ) {
+                if (revealed) {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier
+                            .padding(end = 24.dp)
+                            .size(24.dp)
+                    )
+                }
+            }
+        }
+    ) {
+        HistoryRecordItem(record = record, onLongClick = onLongClick)
     }
 }
 
