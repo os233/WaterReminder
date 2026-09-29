@@ -9,13 +9,18 @@ import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -360,52 +365,41 @@ fun WaterReminderScreen(
                 }
             }
 
-            // 饮料类型选择
+            // 饮料类型选择：响应式列数 —— 按可用宽度决定每行卡片数（单卡最窄 96dp），
+            // 手机一行 3 个，平板 / 桌面模式（DeX 等大屏）最多 5 个，卡片不会被拉宽失真
             Text(
                 text = "选择饮料",
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.padding(bottom = 8.dp)
+                modifier = Modifier.padding(bottom = 10.dp)
             )
-            Column(
+            BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                    .padding(bottom = 16.dp)
             ) {
-                // 一行最多 3 个：5 个挤一行时每个只剩约 60dp，图标加"气泡水"会被迫换行
-                DrinkType.entries.chunked(3).forEach { rowDrinks ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        rowDrinks.forEach { drink ->
-                            FilterChip(
-                                selected = selectedDrink == drink,
-                                onClick = { selectedDrink = drink },
-                                label = {
-                                    Text(
-                                        text = drink.label,
-                                        fontSize = 13.sp,
-                                        maxLines = 1,
-                                        softWrap = false
-                                    )
-                                },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = drink.icon,
-                                        contentDescription = null,
-                                        tint = drink.color,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                },
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                        // 补空位，让最后一行的 chip 与上一行列宽对齐
-                        repeat(3 - rowDrinks.size) {
-                            Spacer(modifier = Modifier.weight(1f))
+                val gap = 10.dp
+                val perRow = ((maxWidth + gap) / (96.dp + gap)).toInt()
+                    .coerceIn(2, DrinkType.entries.size)
+                Column(verticalArrangement = Arrangement.spacedBy(gap)) {
+                    DrinkType.entries.chunked(perRow).forEach { rowDrinks ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(gap)
+                        ) {
+                            rowDrinks.forEach { drink ->
+                                DrinkTypeCard(
+                                    drink = drink,
+                                    selected = selectedDrink == drink,
+                                    onClick = { selectedDrink = drink },
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                            // 补空位，让末行卡片与上一行列宽对齐
+                            repeat(perRow - rowDrinks.size) {
+                                Spacer(modifier = Modifier.weight(1f))
+                            }
                         }
                     }
                 }
@@ -807,6 +801,87 @@ fun WaterAmountCard(
         if (pressed) {
             kotlinx.coroutines.delay(150)
             pressed = false
+        }
+    }
+}
+
+/**
+ * 饮料选择卡片：替代默认 FilterChip。
+ * 选中态用饮料身份色（浅色底 + 1.5dp 描边 + 标签加重为身份色），与快速记录卡片的
+ * 「+200」同语言；悬停态叠一层更浅的身份色（鼠标 / 触控笔等指针设备可见）。
+ * 最小高度对齐「自定义水量」按钮（52dp，矮视口 46dp），触控目标远超 48dp。
+ */
+@Composable
+private fun DrinkTypeCard(
+    drink: DrinkType,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val hovered by interaction.collectIsHoveredAsState()
+
+    val container = animateColorAsState(
+        targetValue = when {
+            selected -> drink.color.copy(alpha = 0.12f)
+            hovered -> drink.color.copy(alpha = 0.06f)
+            else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+        },
+        animationSpec = tween(150),
+        label = "drinkContainer"
+    )
+    val border = animateColorAsState(
+        targetValue = when {
+            selected -> drink.color.copy(alpha = 0.55f)
+            hovered -> drink.color.copy(alpha = 0.35f)
+            else -> Color.Transparent
+        },
+        animationSpec = tween(150),
+        label = "drinkBorder"
+    )
+    // 选中时标签加重为身份色 —— 深浅两套主题下身份色对背景都有足够对比
+    val labelColor = if (selected) drink.color else MaterialTheme.colorScheme.onSurface
+
+    Surface(
+        selected = selected,
+        onClick = onClick,
+        interactionSource = interaction,
+        modifier = modifier,
+        shape = RoundedCornerShape(14.dp),
+        color = container.value,
+        border = BorderStroke(1.5.dp, border.value)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = if (isCompactViewport()) 46.dp else 52.dp)
+                .padding(horizontal = 10.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .background(drink.color.copy(alpha = if (selected) 0.2f else 0.15f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = drink.icon,
+                    contentDescription = null,
+                    tint = drink.color,
+                    modifier = Modifier.size(17.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = drink.label,
+                fontSize = 14.sp,
+                maxLines = 1,
+                softWrap = false,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                color = labelColor
+            )
         }
     }
 }
