@@ -1,8 +1,8 @@
 {
-  "versionCode": 10,
-  "versionName": "0.1.0",
-  "apkUrl": "https://github.com/os233/WaterReminder/releases/download/v0.1.0/WaterReminder_v0.1.0_release.apk",
-  "sha256": "f42b49ca72375431aa041494c62bc783353d3961fba288faf482d48abf14a023",
+  "versionCode": 11,
+  "versionName": "0.1.1",
+  "apkUrl": "https://github.com/os233/WaterReminder/releases/download/v0.1.1/WaterReminder_v0.1.1_release.apk",
+  "sha256": "2dba9b8f3e682a41a0a92c8004fb31ec103502755557d17086cbb6117791dafa",
   "changelog": "选择饮料区改版，交互逻辑不变。\n1. 饮料选择从细小的筛选 chip 改为与整体风格统一的大卡片：饮料身份色的图标圆片，点按区域更大更好按。\n2. 布局自适应：手机一行 3 个，平板 / 桌面大屏一行最多 5 个，卡片不会再被拉宽变形。\n3. 选中态更醒目：以该饮料的身份色浅色打底并描边，文字同步加重，切换时有平滑的颜色过渡。\n4. 桌面模式（DeX 等）下鼠标悬停会有浅色高亮反馈。\n5. 卡片高度与「自定义水量」按钮对齐，间距、字号与快速记录卡片统一。",
   "forceUpdate": false
 }
