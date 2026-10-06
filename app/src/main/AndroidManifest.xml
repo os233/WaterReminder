@@ -4,8 +4,14 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- 应用内更新的安装包由 DownloadManager 后台拉取：不想要系统通知栏的常驻「正在下载」，
+         下载完成的广播由 UpdateChecker 自己注册接收并处理 -->
     <uses-permission android:name="android.permission.DOWNLOAD_WITHOUT_NOTIFICATION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- 两个精确闹钟权限并存是为覆盖 API 31~ 最新版本：
+         USE_EXACT_ALARM 是 API 33+ 才有的安装即授予权限（面向闹钟/计时类应用），33+ 由它兜底；
+         API 31/32 不认识它，靠 SCHEDULE_EXACT_ALARM + 启动时的授权引导（MainActivity）。
+         两者缺一都会让对应版本区间排不了精确闹钟 -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
         <!-- 用于弹出系统的「允许后台运行」对话框（ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS）。
@@ -16,6 +22,8 @@
         <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
         <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <!-- allowBackup 保持开启：饮水记录随系统备份/换机迁移有价值；本应用无账号体系，
+         备份内容不含凭据类敏感数据 -->
     <application
         android:name=".WaterReminderApp"
         android:allowBackup="true"
@@ -41,6 +49,9 @@
             android:name=".notification.AlarmReceiver"
             android:exported="false" />
 
+        <!-- exported=true 是安全的：BOOT_COMPLETED / MY_PACKAGE_REPLACED 是系统受保护广播，
+             只能由系统发出，第三方无法伪造触发。覆盖安装（含应用内更新）会清掉进程与闹钟，
+             靠这里补排（restoreAlarmIfNeeded） -->
         <receiver
             android:name=".notification.BootReceiver"
             android:exported="true">

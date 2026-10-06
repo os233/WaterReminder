@@ -6,9 +6,13 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.provider.Settings
+import android.util.Log
 import android.widget.Toast
 import androidx.core.content.getSystemService
 import java.util.Calendar
+
+/** logcat 统一 tag：用户报障时 `adb logcat -s WaterReminder` 即可取到本应用全部诊断日志 */
+private const val TAG = "WaterReminder"
 
 class AlarmManagerHelper(private val context: Context) {
     private val alarmManager = context.getSystemService<AlarmManager>()!!
@@ -56,6 +60,7 @@ class AlarmManagerHelper(private val context: Context) {
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !alarmManager.canScheduleExactAlarms()) {
+            Log.w(TAG, "schedule exact alarm permission denied, alarm not armed")
             Toast.makeText(context, "请先允许设置精确闹钟", Toast.LENGTH_LONG).show()
             openAlarmSettings()
             return false
@@ -90,6 +95,7 @@ class AlarmManagerHelper(private val context: Context) {
         )
 
         alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent)
+        Log.i(TAG, "alarm armed at $triggerTime (interval=${intervalHours}h)")
 
         prefs.edit().apply {
             putInt(KEY_INTERVAL, intervalHours)
@@ -106,6 +112,7 @@ class AlarmManagerHelper(private val context: Context) {
         )
         alarmManager.cancel(pendingIntent)
         pendingIntent.cancel()
+        Log.i(TAG, "alarm cancelled")
 
         prefs.edit().apply {
             putBoolean(KEY_ENABLED, false)
@@ -123,19 +130,29 @@ class AlarmManagerHelper(private val context: Context) {
      * 改成按 prefs 里记的原定触发时刻重排：同一时刻重复排是幂等的，不会把提醒时间往后推。
      */
     fun restoreAlarmIfNeeded() {
-        if (!prefs.getBoolean(KEY_ENABLED, false)) return
+        if (!prefs.getBoolean(KEY_ENABLED, false)) {
+            Log.i(TAG, "restore: reminder disabled in prefs, skip")
+            return
+        }
         val interval = prefs.getInt(KEY_INTERVAL, 1)
-        if (interval <= 0) return
+        if (interval <= 0) {
+            Log.w(TAG, "restore: reminder enabled but interval=$interval, skip")
+            return
+        }
         // 权限被拒时不能进 armAt：setExactAndAllowWhileIdle 同属精确闹钟 API，没有
         // SCHEDULE_EXACT_ALARM 时照样抛 SecurityException，而调用方之一是
         // BroadcastReceiver，抛出去就是崩溃
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !alarmManager.canScheduleExactAlarms()) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !alarmManager.canScheduleExactAlarms()) {
+            Log.w(TAG, "restore: schedule exact alarm permission denied, skip")
+            return
+        }
 
         val scheduledAt = prefs.getLong(KEY_NEXT_TRIGGER, 0L)
         if (scheduledAt > System.currentTimeMillis()) {
             armAt(scheduledAt, interval)
         } else {
             // 原定时刻已过（多半是 force-stop 期间到的点）→ 重新起算，避免补一个过期的闹钟
+            Log.i(TAG, "restore: scheduled time already passed, re-scheduling from now")
             setRepeatingAlarm(interval)
         }
     }

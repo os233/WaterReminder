@@ -44,6 +44,8 @@ android {
 
     buildTypes {
         release {
+            // 不开 R8/混淆：包体本就很小，收益有限；更重要的是保持堆栈与源码一致，
+            // 用户报障时配合 logcat -s WaterReminder 的日志可直接定位问题
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

@@ -9,6 +9,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.Settings
+import android.util.Log
 import android.widget.Toast
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
@@ -20,6 +21,9 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
 import java.security.MessageDigest
+
+/** logcat 统一 tag：用户报障时 `adb logcat -s WaterReminder` 即可取到本应用全部诊断日志 */
+private const val TAG = "WaterReminder"
 
 /** 一次检查的结果。手动检查要区分「确实最新」和「没查到」，所以不用 null 表示两者。 */
 sealed interface UpdateCheckResult {
@@ -85,7 +89,11 @@ class UpdateChecker(private val context: Context) {
                 .build()
 
             val body = client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return@withContext UpdateCheckResult.Failed
+                if (!response.isSuccessful) {
+                    // 不带响应体，只记状态码 —— 足以区分 404（清单没发布）和 403（代理拦截）
+                    Log.w(TAG, "update check: HTTP ${response.code}")
+                    return@withContext UpdateCheckResult.Failed
+                }
                 response.body?.string() ?: return@withContext UpdateCheckResult.Failed
             }
 
@@ -97,7 +105,7 @@ class UpdateChecker(private val context: Context) {
             }
             result
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "update check failed", e)
             UpdateCheckResult.Failed
         }
     }
@@ -161,6 +169,8 @@ class UpdateChecker(private val context: Context) {
                 try {
                     context.unregisterReceiver(this)
                 } catch (_: IllegalArgumentException) {
+                    // 广播分发期间 receiver 一定处于已注册状态，与系统注销的竞态会偶发抛 IAE；
+                    // 这里 unregister 的目标（不再收后续广播）已达成，可安全忽略
                 }
 
                 // 通过 DownloadManager 查询真实的下载结果，而不是只看文件是否存在
@@ -168,19 +178,38 @@ class UpdateChecker(private val context: Context) {
                 dm.query(query)?.use { cursor ->
                     if (!cursor.moveToFirst()) return
                     val statusIdx = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS)
-                    if (statusIdx >= 0 && cursor.getInt(statusIdx) != DownloadManager.STATUS_SUCCESSFUL) {
+                    val status = if (statusIdx >= 0) cursor.getInt(statusIdx) else -1
+                    if (status != DownloadManager.STATUS_SUCCESSFUL) {
+                        // COLUMN_REASON 才能区分「没网」「磁盘满」「HTTP 404」，Toast 里表达不了
+                        val reasonIdx = cursor.getColumnIndex(DownloadManager.COLUMN_REASON)
+                        val reason = if (reasonIdx >= 0) cursor.getInt(reasonIdx) else -1
+                        Log.w(TAG, "download $downloadId failed: status=$status reason=$reason")
                         Toast.makeText(context, "下载失败，请稍后重试", Toast.LENGTH_LONG).show()
                         return
                     }
                 }
 
                 val file = File(downloadDir, fileName)
-                if (!file.exists()) return
-
-                if (expectedSha256 != null && !expectedSha256.equals(sha256Of(file), ignoreCase = true)) {
-                    file.delete()
-                    Toast.makeText(context, "安装包校验失败，已删除，请重试", Toast.LENGTH_LONG).show()
+                if (!file.exists()) {
+                    Log.w(TAG, "download $downloadId reported success but the file is missing")
                     return
+                }
+
+                if (expectedSha256 != null) {
+                    val actual = sha256Of(file)
+                    when {
+                        // 读失败（null）与摘要不匹配都必须删包，但日志要能区分：
+                        // 前者是本机 I/O 问题，后者意味着清单与 asset 不对应，是发布事故
+                        actual == null ->
+                            Log.e(TAG, "sha256: failed to read $fileName, deleting the download")
+                        !actual.equals(expectedSha256, ignoreCase = true) ->
+                            Log.e(TAG, "sha256 mismatch: expected=$expectedSha256 actual=$actual")
+                    }
+                    if (actual == null || !actual.equals(expectedSha256, ignoreCase = true)) {
+                        file.delete()
+                        Toast.makeText(context, "安装包校验失败，已删除，请重试", Toast.LENGTH_LONG).show()
+                        return
+                    }
                 }
 
                 val uri = FileProvider.getUriForFile(
@@ -251,7 +280,10 @@ internal fun parseVersionJson(json: String, currentVersionCode: Long): UpdateChe
     )
 }
 
-/** 计算文件的 SHA-256（小写十六进制）；读失败返回 null。 */
+/**
+ * 计算文件的 SHA-256（小写十六进制）；读失败返回 null，由调用方记日志并删包。
+ * 保持纯函数、不打日志：JVM 单元测试直接调用本函数，android.util.Log 在测试 JVM 上未 mock。
+ */
 internal fun sha256Of(file: File): String? = try {
     val digest = MessageDigest.getInstance("SHA-256")
     file.inputStream().use { stream ->
@@ -263,8 +295,7 @@ internal fun sha256Of(file: File): String? = try {
         }
     }
     digest.digest().joinToString("") { "%02x".format(it) }
-} catch (e: Exception) {
-    e.printStackTrace()
+} catch (_: Exception) {
     null
 }
 

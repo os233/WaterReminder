@@ -7,9 +7,13 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.example.waterreminder.MainActivity
 import com.example.waterreminder.R
+
+/** logcat 统一 tag：用户报障时 `adb logcat -s WaterReminder` 即可取到本应用全部诊断日志 */
+private const val TAG = "WaterReminder"
 
 class AlarmReceiver : BroadcastReceiver() {
 
@@ -35,10 +39,13 @@ class AlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val helper = AlarmManagerHelper(context)
         val intervalHours = intent.getIntExtra("interval_hours", 1)
+        Log.i(TAG, "alarm fired (interval=${intervalHours}h)")
         // 无论是否免打扰都先排下一次，保证提醒链不断
         helper.setRepeatingAlarm(intervalHours)
         // 夜间免打扰时段内静默跳过本次通知
-        if (!helper.isQuietHoursNow()) {
+        if (helper.isQuietHoursNow()) {
+            Log.i(TAG, "quiet hours, notification skipped")
+        } else {
             showNotification(context)
         }
     }

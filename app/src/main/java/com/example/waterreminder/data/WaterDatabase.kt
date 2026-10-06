@@ -1,6 +1,7 @@
 package com.example.waterreminder.data
 
 import android.content.Context
+import android.util.Log
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
@@ -10,6 +11,9 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+
+/** logcat 统一 tag：用户报障时 `adb logcat -s WaterReminder` 即可取到本应用全部诊断日志 */
+private const val TAG = "WaterReminder"
 
 class Converters {
     private val formatter = DateTimeFormatter.ISO_LOCAL_DATE_TIME
@@ -34,6 +38,7 @@ abstract class WaterDatabase : RoomDatabase() {
         // v2：新增饮料类型与水合系数字段
         private val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
+                Log.i(TAG, "migrating water_database v1 -> v2")
                 db.execSQL("ALTER TABLE water_records ADD COLUMN drinkType TEXT NOT NULL DEFAULT 'water'")
                 db.execSQL("ALTER TABLE water_records ADD COLUMN hydration REAL NOT NULL DEFAULT 1.0")
             }

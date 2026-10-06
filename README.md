@@ -150,7 +150,7 @@ export JAVA_HOME=/path/to/jdk-17
 
 **单元测试**
 
-纯逻辑（免打扰时段、更新 JSON 逐字段校验、SHA-256、连续达标天数、日历网格）有 JUnit4 单元测试，位于 `app/src/test`：
+纯逻辑（免打扰时段、更新 JSON 逐字段校验、SHA-256、连续达标天数、日历网格、饮料 id 兜底与水合系数、时间戳转换器、日期展示格式化）有 JUnit4 单元测试，位于 `app/src/test`：
 
 ```bash
 ./gradlew testDebugUnitTest
@@ -175,7 +175,7 @@ cp keystore.properties.example keystore.properties
 ```
 ├── AGENTS.md                    # AI 代理必须遵守的仓库硬边界与技术约束
 ├── programs.md                  # AI 代理的职责原则、任务处理方式与汇报要求
-├── .github/workflows/           # CI：ci.yml（Manifest 校验 + 编译）、release.yml（构建签名 APK 发到 Releases）
+├── .github/workflows/           # CI：ci.yml（Manifest 校验 → 编译 → 单元测试 → lint 只报告）、release.yml（构建签名 APK 发到 Releases）
 ├── build.gradle.kts             # AGP / Kotlin / KSP 插件版本；app/build.gradle.kts 里是版本号与依赖
 ├── gradle/ · gradlew            # Gradle wrapper（8.11.1，只走 wrapper）
 ├── scripts/
@@ -185,6 +185,7 @@ cp keystore.properties.example keystore.properties
 │   ├── index.html               # 首页
 │   ├── download/ changelog/     # 下载页、更新日志（前端现读 Releases API，失败退到 version.json）
 │   ├── docs/ privacy/           # 使用文档、隐私政策
+│   ├── KNOWN_ISSUES.md          # 已知问题与局限（「提醒不响」的排查入口也在这里）
 │   ├── images/                  # README 界面截图
 │   ├── assets/                  # style.css + site.js
 │   └── version.json             # 发布 Manifest：App 内更新与官网都读它（机器字段由 CI 写）
@@ -577,6 +578,8 @@ Doze / App Standby 仍会推迟闹钟，非 OPPO 系机型的提醒卡片会显�
 
 ## 其他注意事项
 
+- 已确认、暂无法根治或刻意接受的问题与局限集中在 [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md)；
+  「提醒不响」的排查（含 `adb logcat -s WaterReminder` 取诊断日志）也从那里入手
 - `keystore.properties` 与 `*.jks` 已在 `.gitignore` 中，**不要提交密钥库**；
   `local.properties`（含本机 SDK 绝对路径）同样不入库，clone 后用 Android Studio 打开会自动生成
 - 换行符由 `.gitattributes` 统一：文本文件一律 LF 入库，`*.bat` 保持 CRLF。

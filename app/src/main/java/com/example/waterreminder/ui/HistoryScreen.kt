@@ -55,6 +55,7 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
+import java.time.format.DateTimeParseException
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -1044,6 +1045,7 @@ fun HistoryRecordItem(
     }
 }
 
+/** 历史页日期列展示：今天 / 昨天 / 「N月N日 周X」；解析失败（异常数据）原样回显，不崩溃。 */
 fun formatDateDisplay(dateStr: String, today: LocalDate): String {
     return try {
         val date = LocalDate.parse(dateStr)
@@ -1052,7 +1054,7 @@ fun formatDateDisplay(dateStr: String, today: LocalDate): String {
             date == today.minusDays(1) -> "昨天"
             else -> "${date.monthValue}月${date.dayOfMonth}日 ${listOf("周日","周一","周二","周三","周四","周五","周六")[date.dayOfWeek.value % 7]}"
         }
-    } catch (e: Exception) {
+    } catch (_: DateTimeParseException) {
         dateStr
     }
 }

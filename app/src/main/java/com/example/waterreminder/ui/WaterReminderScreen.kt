@@ -1235,7 +1235,8 @@ private fun HourPicker(label: String, hour: Int, onPick: (Int) -> Unit) {
  * Android 16 / realme UI 16 上实测：`dumpsys alarm` 里 `whenElapsed` 被直接改写，
  * 前台时又原样搬回来），表现就是「后台到点不提醒，回到 App 才补上」。
  * 它与用哪个闹钟 API 无关（`setAlarmClock` 也挡不住），唯一解药是系统里的白名单 ——
- * 见 [openOplusPowerConsumption] / [openOplusAutoStart]。
+ * 「允许完全后台行为」可以直跳，见 [openOplusPowerConsumption]；「自启动」页因 OPLUS
+ * 签名级权限拉不起来，只能在文案里写路径引导（见 [openAppSettings] 的说明）。
  */
 private fun isOplusDevice(): Boolean {
     val brand = (Build.BRAND + Build.MANUFACTURER).lowercase()

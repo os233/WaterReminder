@@ -78,7 +78,8 @@ class MainActivity : ComponentActivity() {
         } else {
             // 应用被 force-stop（系统省电、清理工具、一键加速）时，闹钟会连同 PendingIntent
             // 一起被清掉，而 prefs 里的提醒开关仍是「开启」—— 界面看着正常，实际再也不会响。
-            // 这里补排一次；已有待触发闹钟时不会重排，所以不会把提醒时间不断往后推。
+            // 这里补排一次；按 prefs 记的原定时刻重排，同一时刻重复排是幂等的，
+            // 不会把提醒时间不断往后推（见 AlarmManagerHelper.restoreAlarmIfNeeded）。
             alarmHelper.restoreAlarmIfNeeded()
         }
 
