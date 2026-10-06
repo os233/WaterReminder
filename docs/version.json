@@ -1,8 +1,8 @@
 {
-  "versionCode": 11,
-  "versionName": "0.1.1",
-  "apkUrl": "https://github.com/os233/WaterReminder/releases/download/v0.1.1/WaterReminder_v0.1.1_release.apk",
-  "sha256": "2dba9b8f3e682a41a0a92c8004fb31ec103502755557d17086cbb6117791dafa",
+  "versionCode": 12,
+  "versionName": "0.1.2",
+  "apkUrl": "https://github.com/os233/WaterReminder/releases/download/v0.1.2/WaterReminder_v0.1.2_release.apk",
+  "sha256": "35525ad1c464c5115563befad293744b169028f21397d4c0ad9a5b8e6bd3222a",
   "changelog": "本次为维护版本，无功能与界面变化。\n1. 新增诊断日志：提醒不响或更新失败时，可用 adb logcat -s WaterReminder 抓取关键分支日志，便于报障定位。\n2. 更新包 SHA-256 校验失败时区分「摘要不匹配」与「读取失败」；下载失败会记录系统的失败原因码。\n3. 新增「已知问题与局限」文档与「提醒不响」排查指南。\n4. 官网首页功能介绍与 0.1.x 界面同步（水球波浪进度、左滑删除、大屏适配等）。",
   "forceUpdate": false
 }
