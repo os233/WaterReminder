@@ -119,4 +119,8 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.8.4")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.google.code.gson:gson:2.10.1")
+
+    // 纯逻辑单元测试只要 JUnit4：被测目标（免打扰时段 / 更新 JSON 逐字段校验 /
+    // SHA-256 / 连续天数 / 日历网格）都不触碰 android.* API，无需 Robolectric 或 mock 框架。
+    testImplementation("junit:junit:4.13.2")
 }

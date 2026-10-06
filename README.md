@@ -148,6 +148,14 @@ export JAVA_HOME=/path/to/jdk-17
 
 产物：`app/build/outputs/apk/debug/WaterReminder_v<版本号>_debug.apk`
 
+**单元测试**
+
+纯逻辑（免打扰时段、更新 JSON 逐字段校验、SHA-256、连续达标天数、日历网格）有 JUnit4 单元测试，位于 `app/src/test`：
+
+```bash
+./gradlew testDebugUnitTest
+```
+
 **Release**
 
 Release 包**必须签名**，否则打出来的 APK 装不上。签名信息从项目根目录的 `keystore.properties` 读取，该文件不入库。
@@ -499,7 +507,7 @@ Pages 不只是展示 —— **App 的更新检查也读它**（`/version.json`�
 
 | 工作流 | 触发 | 做什么 |
 | --- | --- | --- |
-| `.github/workflows/ci.yml` | push 到 master / 任何 PR / 手动 | Manifest 校验 + `assembleDebug`（lint 目前只报告不拦截）。不需要任何密钥，fork 的 PR 也能安全跑 |
+| `.github/workflows/ci.yml` | push 到 master / 任何 PR / 手动 | Manifest 校验 + `assembleDebug` + 单元测试 `testDebugUnitTest`（lint 目前只报告不拦截）。不需要任何密钥，fork 的 PR 也能安全跑 |
 | `.github/workflows/release.yml` | push 形如 `v1.4.0` 的正式 tag 或 `v1.4.0-beta.1` 的预发布 tag；手动触发保留，用于失败重跑（会覆盖已有 asset） | 校验 tag 与 versionName 一致 → 判定发布通道 → 构建签名 APK → 校验签名 → 创建 Release 并上传 asset（预发布标记为 prerelease）→ 核对 asset 的 SHA-256 与本地产物一致 → 正式版把机器字段写回 `docs/version.json` 并推 master（预发布跳过这一步） |
 
 tag 过滤器是两条 glob：`v[0-9]*.[0-9]*.[0-9]*`（正式）与 `v[0-9]*.[0-9]*.[0-9]*-*`（预发布）。
@@ -575,7 +583,7 @@ Doze / App Standby 仍会推迟闹钟，非 OPPO 系机型的提醒卡片会显�
   Linux CI 上 `./gradlew` 若是 CRLF 会直接报 `bash\r: No such file or directory`
 - APK 不再入库，改由 GitHub Release asset 分发（`.github/workflows/release.yml`）；
   `app/release/` 只作本地留档并已加入 `.gitignore`
-- 仓库没有测试套件，**应用内更新的「下载 → 校验 → 安装」只能装到设备上手动验证**。
+- 纯逻辑有 JUnit4 单元测试（`./gradlew testDebugUnitTest`），**但应用内更新的「下载 → 校验 → 安装」只能装到设备上手动验证**。
   检查 `shared_prefs/update_prefs.xml` 里出现 `last_check_at` 只能证明请求到了 Manifest，
   不证明版本比较与摘要校验逻辑对
 - 仓库 Settings → Pages 的源必须是 `master` 分支的 `/docs` 目录 —— 官网在 `docs/`，

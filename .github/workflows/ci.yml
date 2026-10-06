@@ -1,6 +1,6 @@
 name: CI
 
-# 只做质量门禁：Manifest 校验 + 编译。不碰签名、不发版，所以 fork 的 PR 也能安全跑。
+# 只做质量门禁：Manifest 校验 + 编译 + 纯逻辑单元测试。不碰签名、不发版，所以 fork 的 PR 也能安全跑。
 #
 # 触发：push 到 master、任何 PR、以及手动。
 
@@ -40,6 +40,11 @@ jobs:
 
       - name: 构建 debug APK
         run: ./gradlew assembleDebug --no-daemon
+
+      # 纯逻辑单元测试（app/src/test）：免打扰时段 / 更新 JSON 逐字段校验 / SHA-256 /
+      # 连续达标天数 / 日历网格。被测代码不触碰 android.*，普通 JVM 单元测试即可。
+      - name: 单元测试
+        run: ./gradlew testDebugUnitTest --no-daemon
 
       # 项目当前没有 lint baseline，先只报告不拦截；等清干净了再去掉 continue-on-error
       - name: lint（暂不拦截）

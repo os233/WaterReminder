@@ -25,7 +25,7 @@
 
 - 只实现用户请求及其必要后果；不顺手重构无关代码。优先使用现有 Android API、Kotlin、Compose、Room、OkHttp 等能力。不得为了少量代码引入依赖或抽象。
 - 新增第三方依赖前，必须说明用途及现有能力为何不足。依赖版本写在 `app/build.gradle.kts`；本仓库没有 version catalog。仓库来源固定于 `settings.gradle.kts` 的 `google()` / `mavenCentral()`；因启用 `FAIL_ON_PROJECT_REPOS`，不得在模块内另设 repositories。
-- `scripts/` 下 Python 脚本必须仅使用标准库。不得新增仅用于验证刚完成改动的检查器；本项目没有测试套件，不得为凑验证新建测试脚手架，除非任务本身要求增加测试。
+- `scripts/` 下 Python 脚本必须仅使用标准库。不得新增仅用于验证刚完成改动的检查器；单元测试只放在 `app/src/test` 的 JUnit4 纯逻辑套件里，不为凑验证新建其他测试脚手架。
 - 工具链版本是硬约束；构建报错先核对环境，不能通过随意升级工具或依赖绕过：JDK 17 或 21（Gradle 8.11.1 不支持 Java 24+；CI 使用 17）；Android platform `android-36`，`compileSdk` 与 `targetSdk` 为 36；CI 安装 `build-tools;36.0.0`；Gradle 8.11.1 且只用仓库 wrapper；AGP 8.10.1、Kotlin 2.0.21、KSP 2.0.21-1.0.28；Python 3.9+ 仅供脚本使用。
 - CLI 构建前必须设置 `JAVA_HOME`。Android SDK 由 `ANDROID_HOME` / `ANDROID_SDK_ROOT` 或本地 `local.properties` 指定；本机路径不得写入入库文件。Java 源码和字节码目标固定为 17；`minSdk = 26`，高于 API 26 的平台 API 必须按 `SDK_INT` 分支。
 
@@ -91,19 +91,20 @@
 | 改动范围 | 必需检查 | 可证明的范围与边界 |
 | --- | --- | --- |
 | Kotlin、Android 资源、依赖或构建逻辑 | `./gradlew assembleDebug`（先设置 `JAVA_HOME`；推荐 JDK 17 或 21） | 编译与资源处理成功；不等价于设备运行正确 |
+| 免打扰时段、更新 JSON 逐字段校验、SHA-256、连续达标天数、日历网格、饮料 id 兜底等纯逻辑，或测试本身 | `./gradlew testDebugUnitTest`（JDK 要求同上） | JVM 单元测试通过；不等价于设备运行正确，也不覆盖 Room / 闹钟 / 界面行为 |
 | `docs/version.json`、版本同步脚本或发布相关元数据 | `python scripts/sync_version.py --check` | 检查版本字段、格式、HTTPS URL、版本名匹配、摘要格式及可用构建元数据；不要求 Manifest 版本等于当前源码版本 |
 | `.github/workflows/*.yml` | PyYAML `yaml.safe_load` 解析 | 检查 YAML 可解析；不代表 GitHub Actions 执行成功 |
 | 应用内更新下载、摘要校验、安装或其存储路径 | 设备手工验证下载 → 校验 → 安装 | 该链路没有自动化测试；未在设备走完整流程时，必须说明未实测 |
 | 更新检查是否请求到 GitHub | 检查成功后查看设备 `shared_prefs/update_prefs.xml` 的 `last_check_at` | 只证明检查请求得到结果，不证明版本比较、下载、校验或安装正确；用户数据须脱敏 |
 | 纯文档改动 | 检查链接、章节交叉引用、命令/字段名与现行约束一致；若触及版本 Manifest 规则，运行其校验命令 | 不要求无关 Android 构建；不得据此声称代码行为已验证 |
 
-本仓库没有测试套件；lint 当前只报告、不拦截。除非任务本身明确增加测试，否则不要创建测试脚手架或新检查器。
+单元测试是 `app/src/test` 下的 JUnit4 纯逻辑套件，CI 在构建后运行 `testDebugUnitTest`；lint 当前只报告、不拦截。除非任务本身明确增加测试，否则不要创建其他测试脚手架或新检查器。
 
 ### 9. 高风险行为的专项复核
 
 以下项目在对应代码被触及时，除通用构建检查外还必须按契约复核；超出自动检查能力的部分须明确说明：
 
-- **更新协议：** 检查 URL、顶层字段、逐字段校验、整数版本比较、HTTPS 与 SHA-256 格式处理、失败只返回 `Failed`、12 小时节流仅在成功取到结果后写入。
+- **更新协议：** 检查 URL、顶层字段、逐字段校验、整数版本比较、HTTPS 与 SHA-256 格式处理、失败只返回 `Failed`、12 小时节流仅在成功取到结果后写入。逐字段校验、HTTPS 与摘要格式处理已由 `ParseVersionJsonTest` 等 JVM 单元测试覆盖；断网 / 非 2xx 行为与完整下载安装链路仍需设备手工验证。
 - **下载与安装：** 检查私有目录与 FileProvider 路径一致、广播注册为 `RECEIVER_EXPORTED`、按 downloadId/DownloadManager 状态复核、安装前 SHA-256 校验和失败删包。完整链路需设备手工走通。
 - **Room 与偏好设置：** 实体变更检查 Migration 与数据库版本；确认没有 destructive migration；确认已发布偏好文件名/key 保持兼容。
 - **闹钟与日期：** 检查 `setExactAndAllowWhileIdle`、跨午夜免打扰分支、无前台保活服务、OPPO 系引导常驻显示，以及 `rememberToday()` 生命周期刷新方案。

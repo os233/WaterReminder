@@ -594,6 +594,16 @@ fun WeeklyStatsCard(weekData: List<Pair<LocalDate, Int>>, goal: Int, today: Loca
     }
 }
 
+/**
+ * 日历网格几何（纯函数）：返回 [首格前的偏移, 行数]。网格以周日开头 ——
+ * ISO 的 dayOfWeek 是周一=1…周日=7，`% 7` 把周日折成 0。
+ */
+internal fun calendarGrid(month: YearMonth): Pair<Int, Int> {
+    val firstDayWeekday = month.atDay(1).dayOfWeek.value % 7
+    val totalCells = firstDayWeekday + month.lengthOfMonth()
+    return firstDayWeekday to (totalCells + 6) / 7
+}
+
 @Composable
 fun CalendarView(
     dailyTotals: List<DailyTotal>,
@@ -612,11 +622,8 @@ fun CalendarView(
         if (!navigated) currentMonth = YearMonth.from(today)
     }
     val totalMap = remember(dailyTotals) { dailyTotals.associate { it.recordDate to it.total } }
-    val firstDayOfMonth = currentMonth.atDay(1)
     val daysInMonth = currentMonth.lengthOfMonth()
-    val firstDayWeekday = firstDayOfMonth.dayOfWeek.value % 7
-    val totalCells = firstDayWeekday + daysInMonth
-    val rows = (totalCells + 6) / 7
+    val (firstDayWeekday, rows) = calendarGrid(currentMonth)
 
     // 上滑收起：累计拖动位移超过阈值才触发，避免误触
     val dragThreshold = with(LocalDensity.current) { 48.dp.toPx() }

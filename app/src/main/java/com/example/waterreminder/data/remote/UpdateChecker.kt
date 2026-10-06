@@ -61,9 +61,6 @@ class UpdateChecker(private val context: Context) {
 
         /** 自动检查的最小间隔。静态文件没有配额限制，但也没必要每次启动都打 */
         private const val CHECK_INTERVAL_MS = 12 * 60 * 60 * 1000L
-
-        /** SHA-256 十六进制摘要的长度 */
-        private const val SHA256_HEX_LENGTH = 64
     }
 
     /**
@@ -94,7 +91,7 @@ class UpdateChecker(private val context: Context) {
 
             // 只在真的得到检查结果（非 Failed）才记时间；2xx 但 JSON 坏掉也算失败，
             // 不能把它记成「已检查」，否则坏清单会压住后续重试 12 小时
-            val result = parseVersionJson(body)
+            val result = parseVersionJson(body, currentVersionCode())
             if (result != UpdateCheckResult.Failed) {
                 prefs.edit().putLong(KEY_LAST_CHECK, System.currentTimeMillis()).apply()
             }
@@ -103,36 +100,6 @@ class UpdateChecker(private val context: Context) {
             e.printStackTrace()
             UpdateCheckResult.Failed
         }
-    }
-
-    /** 解析 `version.json`。字段缺失或非法一律判为失败，宁可说「没查到」也不猜。 */
-    private fun parseVersionJson(json: String): UpdateCheckResult {
-        val root = JsonParser.parseString(json).asJsonObject
-
-        val versionCode = root.intOrNull("versionCode") ?: return UpdateCheckResult.Failed
-        if (versionCode <= 0) return UpdateCheckResult.Failed
-
-        val versionName = root.stringOrNull("versionName")?.takeIf { it.isNotBlank() }
-            ?: return UpdateCheckResult.Failed
-
-        val apkUrl = root.stringOrNull("apkUrl") ?: return UpdateCheckResult.Failed
-        // 更新包只允许走 HTTPS，拒绝任何明文下载
-        if (!apkUrl.startsWith("https://")) return UpdateCheckResult.Failed
-
-        if (versionCode <= currentVersionCode()) return UpdateCheckResult.UpToDate
-
-        return UpdateCheckResult.Available(
-            UpdateInfo(
-                versionCode = versionCode,
-                versionName = versionName,
-                apkUrl = apkUrl,
-                changelog = root.stringOrNull("changelog").orEmpty(),
-                // 格式不对就当没有摘要，下载后不校验 —— 但绝不会拿一个错的值去校验
-                sha256 = root.stringOrNull("sha256")
-                    ?.takeIf { it.length == SHA256_HEX_LENGTH && it.all(Char::isHexDigit) },
-                forceUpdate = root.booleanOrNull("forceUpdate") ?: false
-            )
-        )
     }
 
     /** 装机版本号；API 28+ 用 longVersionCode，更低版本回退到已废弃的 versionCode。 */
@@ -246,23 +213,59 @@ class UpdateChecker(private val context: Context) {
             ContextCompat.RECEIVER_EXPORTED
         )
     }
+}
 
-    /** 计算文件的 SHA-256（小写十六进制）；读失败返回 null。 */
-    private fun sha256Of(file: File): String? = try {
-        val digest = MessageDigest.getInstance("SHA-256")
-        file.inputStream().use { stream ->
-            val buffer = ByteArray(8 * 1024)
-            while (true) {
-                val read = stream.read(buffer)
-                if (read <= 0) break
-                digest.update(buffer, 0, read)
-            }
+/** SHA-256 十六进制摘要的长度 */
+private const val SHA256_HEX_LENGTH = 64
+
+/**
+ * 解析 `version.json`。字段缺失或非法一律判为失败，宁可说「没查到」也不猜。
+ * 做成注入本机版本号的纯函数，逐字段校验规则可以在 JVM 单元测试里直接验证。
+ */
+internal fun parseVersionJson(json: String, currentVersionCode: Long): UpdateCheckResult {
+    val root = JsonParser.parseString(json).asJsonObject
+
+    val versionCode = root.intOrNull("versionCode") ?: return UpdateCheckResult.Failed
+    if (versionCode <= 0) return UpdateCheckResult.Failed
+
+    val versionName = root.stringOrNull("versionName")?.takeIf { it.isNotBlank() }
+        ?: return UpdateCheckResult.Failed
+
+    val apkUrl = root.stringOrNull("apkUrl") ?: return UpdateCheckResult.Failed
+    // 更新包只允许走 HTTPS，拒绝任何明文下载
+    if (!apkUrl.startsWith("https://")) return UpdateCheckResult.Failed
+
+    if (versionCode <= currentVersionCode) return UpdateCheckResult.UpToDate
+
+    return UpdateCheckResult.Available(
+        UpdateInfo(
+            versionCode = versionCode,
+            versionName = versionName,
+            apkUrl = apkUrl,
+            changelog = root.stringOrNull("changelog").orEmpty(),
+            // 格式不对就当没有摘要，下载后不校验 —— 但绝不会拿一个错的值去校验
+            sha256 = root.stringOrNull("sha256")
+                ?.takeIf { it.length == SHA256_HEX_LENGTH && it.all(Char::isHexDigit) },
+            forceUpdate = root.booleanOrNull("forceUpdate") ?: false
+        )
+    )
+}
+
+/** 计算文件的 SHA-256（小写十六进制）；读失败返回 null。 */
+internal fun sha256Of(file: File): String? = try {
+    val digest = MessageDigest.getInstance("SHA-256")
+    file.inputStream().use { stream ->
+        val buffer = ByteArray(8 * 1024)
+        while (true) {
+            val read = stream.read(buffer)
+            if (read <= 0) break
+            digest.update(buffer, 0, read)
         }
-        digest.digest().joinToString("") { "%02x".format(it) }
-    } catch (e: Exception) {
-        e.printStackTrace()
-        null
     }
+    digest.digest().joinToString("") { "%02x".format(it) }
+} catch (e: Exception) {
+    e.printStackTrace()
+    null
 }
 
 /** 取 JSON 字段的字符串值；字段缺失或是 null 时返回 null（而不是抛异常）。 */

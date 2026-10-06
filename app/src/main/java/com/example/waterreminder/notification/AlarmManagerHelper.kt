@@ -167,13 +167,16 @@ class AlarmManagerHelper(private val context: Context) {
     /** 当前是否处于免打扰时段（支持跨午夜区间，如 22 点到次日 8 点） */
     fun isQuietHoursNow(): Boolean {
         if (!isDndEnabled()) return false
-        val hour = java.time.LocalTime.now().hour
-        val start = getDndStartHour()
-        val end = getDndEndHour()
-        return when {
-            start == end -> false
-            start < end -> hour in start until end
-            else -> hour >= start || hour < end
-        }
+        return isQuietHour(java.time.LocalTime.now().hour, getDndStartHour(), getDndEndHour())
     }
+}
+
+/**
+ * 免打扰时段判断（纯函数）：start == end 视为未设区间，一律不拦；
+ * start > end 为跨午夜区间（如 22 点到次日 8 点）；end 小时本身不包含在内。
+ */
+internal fun isQuietHour(hour: Int, start: Int, end: Int): Boolean = when {
+    start == end -> false
+    start < end -> hour in start until end
+    else -> hour >= start || hour < end
 }

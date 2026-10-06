@@ -717,7 +717,7 @@ private fun recordDrink(
 }
 
 /** 连续达标天数：today 未达标则从昨天起算，不因"还没喝"而清零 */
-private fun computeStreak(totals: List<DailyTotal>, goal: Int, today: LocalDate): Int {
+internal fun computeStreak(totals: List<DailyTotal>, goal: Int, today: LocalDate): Int {
     if (totals.isEmpty()) return 0
     val map = totals.associate { it.recordDate to it.total }
     var date = today
