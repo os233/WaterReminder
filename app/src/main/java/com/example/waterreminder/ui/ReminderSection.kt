@@ -420,8 +420,9 @@ private fun openAppSettings(context: Context) {
     runCatching { context.startActivity(intent) }
 }
 
-/** Android 13+ 通知是运行时权限；被拒后闹钟照常触发，但通知会被系统静默丢弃 */
-private fun hasNotificationPermission(context: Context): Boolean {
+/** Android 13+ 通知是运行时权限；被拒后闹钟照常触发，但通知会被系统静默丢弃。
+ *  internal：首启引导（OnboardingScreen）复用同一判定，避免两处口径不一致 */
+internal fun hasNotificationPermission(context: Context): Boolean {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return true
     return ContextCompat.checkSelfPermission(
         context, Manifest.permission.POST_NOTIFICATIONS

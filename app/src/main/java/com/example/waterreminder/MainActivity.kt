@@ -16,20 +16,25 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.example.waterreminder.data.UserPrefs
 import com.example.waterreminder.data.WaterDatabase
 import com.example.waterreminder.data.remote.UpdateCheckResult
 import com.example.waterreminder.data.remote.UpdateChecker
 import com.example.waterreminder.data.remote.UpdateInfo
 import com.example.waterreminder.notification.AlarmManagerHelper
 import com.example.waterreminder.ui.HistoryScreen
+import com.example.waterreminder.ui.OnboardingScreen
 import com.example.waterreminder.ui.UpdateDialog
 import com.example.waterreminder.ui.WaterReminderScreen
 import com.example.waterreminder.ui.theme.WaterReminderTheme
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -137,9 +142,30 @@ fun AppNavigation(
     onCheckUpdate: () -> Unit
 ) {
     val navController = rememberNavController()
+    val context = LocalContext.current
+
+    // 首启门控：仅在「无任何记录且未完成引导」时进引导——老用户升级后不受影响
+    //（Hidroly 的数据驱动判定式）；判定需异步查库，查清前给最小加载态
+    var startDestination by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) {
+        val hasRecords = dao.getAllRecordDates().first().isNotEmpty()
+        startDestination =
+            if (!UserPrefs.isOnboardingCompleted(context) && !hasRecords) "onboarding" else "home"
+    }
+    val start = startDestination
+    if (start == null) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            CircularProgressIndicator()
+        }
+        return
+    }
+
     NavHost(
         navController = navController,
-        startDestination = "home",
+        startDestination = start,
         enterTransition = {
             slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Left, animationSpec = tween(300))
         },
@@ -153,11 +179,21 @@ fun AppNavigation(
             slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.Right, animationSpec = tween(300))
         }
     ) {
+        composable("onboarding") {
+            OnboardingScreen(
+                onComplete = {
+                    navController.navigate("home") {
+                        popUpTo("onboarding") { inclusive = true }
+                    }
+                }
+            )
+        }
         composable("home") {
             WaterReminderScreen(
                 dao = dao,
                 onHistoryClick = { navController.navigate("history") },
-                onCheckUpdate = onCheckUpdate
+                onCheckUpdate = onCheckUpdate,
+                onRerunOnboarding = { navController.navigate("onboarding") }
             )
         }
         composable("history") {

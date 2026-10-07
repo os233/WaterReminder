@@ -52,6 +52,7 @@ fun WaterReminderScreen(
     dao: WaterRecordDao,
     onHistoryClick: () -> Unit,
     onCheckUpdate: () -> Unit,
+    onRerunOnboarding: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -529,6 +530,10 @@ fun WaterReminderScreen(
             onCheckUpdate = {
                 showAboutDialog = false
                 onCheckUpdate()
+            },
+            onRerunOnboarding = {
+                showAboutDialog = false
+                onRerunOnboarding()
             }
         )
     }
@@ -560,10 +565,10 @@ fun WaterReminderScreen(
                     Slider(
                         value = sliderValue,
                         onValueChange = { sliderValue = (it / 100).toInt() * 100f },
-                        valueRange = 1000f..4000f
+                        valueRange = 1000f..5000f
                     )
                     Text(
-                        text = "范围 1000 – 4000 ml，步长 100",
+                        text = "范围 1000 – 5000 ml，步长 100",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center,

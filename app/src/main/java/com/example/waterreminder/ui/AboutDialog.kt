@@ -28,7 +28,8 @@ import androidx.compose.ui.unit.sp
 @Composable
 internal fun AboutDialog(
     onDismiss: () -> Unit,
-    onCheckUpdate: () -> Unit
+    onCheckUpdate: () -> Unit,
+    onRerunOnboarding: () -> Unit
 ) {
     val context = LocalContext.current
     val versionName = remember {
@@ -66,6 +67,10 @@ internal fun AboutDialog(
                     lineHeight = 20.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                Spacer(modifier = Modifier.height(4.dp))
+                TextButton(onClick = onRerunOnboarding) {
+                    Text("重新运行初始引导", fontSize = 13.sp)
+                }
             }
         },
         confirmButton = {
