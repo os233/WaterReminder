@@ -124,28 +124,34 @@ fun OnboardingScreen(onComplete: () -> Unit) {
         )
         Spacer(modifier = Modifier.height(16.dp))
 
-        when (step) {
-            0 -> WelcomeStep()
-            1 -> ProfileStep(
-                gender = gender,
-                onGenderChange = { gender = it },
-                weightText = weightText,
-                onWeightChange = { weightText = it.filter { c -> c.isDigit() } },
-                activity = activity,
-                onActivityChange = { activity = it },
-                goal = goal,
-                onGoalChange = { goal = ((it / 100).toInt() * 100).coerceIn(1000, 5000) }
-            )
-            else -> ReminderStep(
-                intervalHours = intervalHours,
-                onIntervalChange = { intervalHours = it },
-                notificationAllowed = notificationAllowed,
-                exactAlarmAllowed = exactAlarmAllowed,
-                goalMl = goal
-            )
+        // 内容区独占剩余高度：WelcomeStep 内部的 weight 占位只在这里生效，
+        // 底部按钮行始终钉在屏幕内（否则欢迎页会把按钮挤出屏幕）
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+        ) {
+            when (step) {
+                0 -> WelcomeStep()
+                1 -> ProfileStep(
+                    gender = gender,
+                    onGenderChange = { gender = it },
+                    weightText = weightText,
+                    onWeightChange = { weightText = it.filter { c -> c.isDigit() } },
+                    activity = activity,
+                    onActivityChange = { activity = it },
+                    goal = goal,
+                    onGoalChange = { goal = ((it / 100).toInt() * 100).coerceIn(1000, 5000) }
+                )
+                else -> ReminderStep(
+                    intervalHours = intervalHours,
+                    onIntervalChange = { intervalHours = it },
+                    notificationAllowed = notificationAllowed,
+                    exactAlarmAllowed = exactAlarmAllowed,
+                    goalMl = goal
+                )
+            }
         }
-
-        Spacer(modifier = Modifier.weight(1f))
 
         Row(
             modifier = Modifier.fillMaxWidth(),
