@@ -37,6 +37,25 @@ internal fun calendarGrid(month: YearMonth): Pair<Int, Int> {
     return firstDayWeekday to (totalCells + 6) / 7
 }
 
+/**
+ * 月度达标统计（纯函数）：返回 [本月达标天数, 统计天数]。
+ * 当前月只统计到今天为止（未来天数不计入分母）。
+ */
+internal fun monthReachedStats(
+    totals: List<DailyTotal>,
+    goal: Int,
+    month: YearMonth,
+    today: LocalDate
+): Pair<Int, Int> {
+    val map = totals.associate { it.recordDate to it.total }
+    val countedDays = if (month == YearMonth.from(today)) today.dayOfMonth else month.lengthOfMonth()
+    var reached = 0
+    for (day in 1..countedDays) {
+        if ((map[month.atDay(day).toString()] ?: 0) >= goal) reached++
+    }
+    return reached to countedDays
+}
+
 @Composable
 fun CalendarView(
     dailyTotals: List<DailyTotal>,
@@ -62,7 +81,8 @@ fun CalendarView(
     val dragThreshold = with(LocalDensity.current) { 48.dp.toPx() }
     var accumulatedDrag by remember { mutableFloatStateOf(0f) }
 
-    Card(
+    // 日历不再自带卡片底：挂在历史页统计分组卡内，由外层提供表面
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .pointerInput(Unit) {
@@ -74,12 +94,9 @@ fun CalendarView(
                         accumulatedDrag = 0f
                     }
                 ) { _, dragAmount -> accumulatedDrag += dragAmount }
-            },
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            }
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(vertical = 4.dp)) {
             // 拖拽手柄
             Box(
                 modifier = Modifier

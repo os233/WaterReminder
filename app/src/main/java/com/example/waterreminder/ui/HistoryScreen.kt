@@ -17,6 +17,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.ArrowDropUp
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FileDownload
@@ -37,11 +39,13 @@ import com.example.waterreminder.data.DrinkType
 import com.example.waterreminder.data.UserPrefs
 import com.example.waterreminder.data.WaterRecord
 import com.example.waterreminder.data.WaterRecordDao
+import com.example.waterreminder.ui.theme.successColor
 import com.example.waterreminder.widget.WaterWidgetUpdater
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
+import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -64,6 +68,7 @@ fun HistoryScreen(
     val selectedDate = pinnedDate ?: today.toString()
     val selectedRecords by dao.getRecordsByDate(selectedDate).collectAsState(initial = emptyList())
     val selectedTotal by dao.getDailyTotal(selectedDate).collectAsState(initial = 0)
+    val selPercent = ((selectedTotal ?: 0).toFloat() / goal).coerceIn(0f, 1f)
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showCalendar by remember { mutableStateOf(true) }
 
@@ -75,6 +80,9 @@ fun HistoryScreen(
             d to (map[d.toString()] ?: 0)
         }
     }
+    // 月度达标 + 连续天数（月度按今天所在月、只计已过天数）
+    val monthReached = monthReachedStats(allTotals, goal, YearMonth.from(today), today)
+    val streak = computeStreak(allTotals, goal, today)
 
     fun deleteRecord(record: WaterRecord) {
         scope.launch {
@@ -154,6 +162,8 @@ fun HistoryScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .wrapContentWidth(Alignment.CenterHorizontally)
+                .widthIn(max = 480.dp)
                 .padding(padding)
                 .padding(horizontal = 16.dp)
                 .then(if (pageScrollable) Modifier.verticalScroll(pageScrollState) else Modifier)
@@ -161,177 +171,209 @@ fun HistoryScreen(
                 // 滑到底时详细记录卡片与手势条之间仍有间距，不会贴死被裁
                 .padding(bottom = 16.dp)
         ) {
-            // 日历收起时，在统计卡区域向下划可重新展开
+            // 三合一统计分组卡：日期切换 + 数据行 + 周图 + 月度达标 + 日历（可折叠）。
+            // 日历收起时，在卡片上向下划可重新展开
             val expandDragThreshold = with(LocalDensity.current) { 48.dp.toPx() }
             var expandDrag by remember { mutableFloatStateOf(0f) }
 
-            Column(
-                modifier = Modifier.pointerInput(showCalendar) {
-                    if (!showCalendar) {
-                        detectVerticalDragGestures(
-                            onDragStart = { expandDrag = 0f },
-                            onDragCancel = { expandDrag = 0f },
-                            onDragEnd = {
-                                if (expandDrag >= expandDragThreshold) showCalendar = true
-                                expandDrag = 0f
-                            }
-                        ) { _, dragAmount -> expandDrag += dragAmount }
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .pointerInput(showCalendar) {
+                        if (!showCalendar) {
+                            detectVerticalDragGestures(
+                                onDragStart = { expandDrag = 0f },
+                                onDragCancel = { expandDrag = 0f },
+                                onDragEnd = {
+                                    if (expandDrag >= expandDragThreshold) showCalendar = true
+                                    expandDrag = 0f
+                                }
+                            ) { _, dragAmount -> expandDrag += dragAmount }
+                        }
+                    },
+                shape = RoundedCornerShape(28.dp),
+                color = MaterialTheme.colorScheme.surfaceContainer
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    // 卡头：选中日期 + 日历折叠切换
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = formatDateDisplay(selectedDate, today),
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        IconButton(onClick = { showCalendar = !showCalendar }) {
+                            Icon(
+                                imageVector = if (showCalendar) Icons.Default.ArrowDropUp else Icons.Default.ArrowDropDown,
+                                contentDescription = if (showCalendar) "收起日历" else "展开日历",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
-                }
-            ) {
-                // 日期统计卡片
-                DateSummaryCard(
-                    date = selectedDate,
-                    total = selectedTotal ?: 0,
-                    recordCount = selectedRecords.size,
-                    goal = goal,
-                    today = today,
-                    onToggleCalendar = { showCalendar = !showCalendar },
-                    showCalendar = showCalendar
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // 最近 7 天统计图
-                WeeklyStatsCard(weekData = weekData, goal = goal, today = today)
-            }
-
-            // 日历视图（整块可折叠：上滑收起）
-            AnimatedVisibility(
-                visible = showCalendar,
-                enter = expandVertically(expandFrom = Alignment.Top) + fadeIn(),
-                exit = shrinkVertically(shrinkTowards = Alignment.Top) + fadeOut()
-            ) {
-                Column {
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    CalendarView(
-                        dailyTotals = allTotals,
-                        selectedDate = selectedDate,
-                        goal = goal,
-                        today = today,
-                        onCollapse = { showCalendar = false },
-                        onDateSelected = { pinnedDate = if (it == today.toString()) null else it }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    // 数据行：大数字 + 单位 + 单个圆环进度（同一进度不再画两遍）
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.Bottom) {
+                            Text(
+                                text = "${selectedTotal ?: 0}",
+                                fontSize = 32.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "/ $goal ml",
+                                fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(bottom = 5.dp)
+                            )
+                        }
+                        Box(
+                            modifier = Modifier.size(48.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(
+                                progress = { selPercent },
+                                modifier = Modifier.size(44.dp),
+                                strokeWidth = 4.dp,
+                                color = if (selPercent >= 1f) MaterialTheme.successColor else MaterialTheme.colorScheme.primary,
+                                trackColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                            )
+                            Text(
+                                text = "${(selPercent * 100).toInt()}%",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(14.dp))
+                    // 最近 7 天
+                    WeeklyStatsSection(weekData = weekData, goal = goal, today = today)
+                    Spacer(modifier = Modifier.height(10.dp))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.12f))
+                    Spacer(modifier = Modifier.height(10.dp))
+                    // 月度达标统计
+                    Text(
+                        text = "本月达标 ${monthReached.first}/${monthReached.second} 天 · 连续 $streak 天",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    // 日历（上滑收起，点日期切换查看日）
+                    AnimatedVisibility(
+                        visible = showCalendar,
+                        enter = expandVertically(expandFrom = Alignment.Top) + fadeIn(),
+                        exit = shrinkVertically(shrinkTowards = Alignment.Top) + fadeOut()
+                    ) {
+                        Column {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.12f))
+                            Spacer(modifier = Modifier.height(12.dp))
+                            CalendarView(
+                                dailyTotals = allTotals,
+                                selectedDate = selectedDate,
+                                goal = goal,
+                                today = today,
+                                onCollapse = { showCalendar = false },
+                                onDateSelected = { pinnedDate = if (it == today.toString()) null else it }
+                            )
+                        }
+                    }
                 }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // 详细记录：标题与列表同属一张卡片，避免中间夹一道裸露背景的接缝
-            Card(
+            // 记录列表（扁平化：去卡中卡嵌套）
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .then(
-                        // 整页可滚动时不能再用 weight（父级高度无界），改给一个最小高度
-                        if (pageScrollable) Modifier.heightIn(min = 220.dp)
-                        else Modifier.weight(1f)
-                    ),
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                    .padding(bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
+                Icon(
+                    imageVector = Icons.Default.WaterDrop,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(14.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = if (selectedDate == today.toString()) "今日记录"
+                    else "${formatDateDisplay(selectedDate, today)}记录",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = "（左滑或长按删除）",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 6.dp)
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                if (selectedRecords.isNotEmpty()) {
+                    Text(
+                        text = "${selectedRecords.size} 条",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            if (selectedRecords.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .then(
+                            if (pageScrollable) Modifier.heightIn(min = 120.dp)
+                            else Modifier.weight(1f)
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            imageVector = Icons.Default.WaterDrop,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                            modifier = Modifier.size(40.dp)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            "该日期无记录",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            fontSize = 13.sp
+                        )
+                    }
+                }
+            } else {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .then(if (pageScrollable) Modifier else Modifier.fillMaxSize())
+                        .then(
+                            if (pageScrollable) Modifier
+                            else Modifier.weight(1f).verticalScroll(recordScrollState)
+                        )
                 ) {
-                    // 标题行
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.WaterDrop,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(18.dp)
+                    selectedRecords.forEach { record ->
+                        // key 必不可少：列表无 LazyColumn item key 时，删除后上移的条目
+                        // 会复用同位组合位并继承「已滑开」的 dismiss 状态，
+                        // 触发级联 confirm 误删下一行（实测一次滑动删掉两条）。
+                        // 绑定 record.id 后上移条目拿到全新 Settled 状态。
+                        key(record.id) {
+                            SwipeDismissRecordItem(
+                                record = record,
+                                onDelete = { deleteRecord(record) },
+                                onLongClick = { deleteRecord(record) }
                             )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "详细记录",
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = "（左滑或长按删除单条）",
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(start = 6.dp)
-                            )
-                        }
-                        if (selectedRecords.isNotEmpty()) {
-                            Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = MaterialTheme.colorScheme.primaryContainer
-                            ) {
-                                Text(
-                                    text = "${selectedRecords.size} 条",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                                )
-                            }
-                        }
-                    }
-
-                    // 记录列表
-                    if (selectedRecords.isEmpty()) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .then(
-                                    if (pageScrollable) Modifier.heightIn(min = 140.dp)
-                                    else Modifier.weight(1f)
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Icon(
-                                    imageVector = Icons.Default.WaterDrop,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                                    modifier = Modifier.size(48.dp)
-                                )
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    "该日期无记录",
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                                    fontSize = 14.sp
-                                )
-                            }
-                        }
-                    } else {
-                        // 整页可滚动时列表跟着页面滚，否则在卡片内部滚（等价于原来的 LazyColumn 行为）
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .then(
-                                    if (pageScrollable) Modifier
-                                    else Modifier.weight(1f).verticalScroll(recordScrollState)
-                                )
-                                .padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            selectedRecords.forEach { record ->
-                                // key 必不可少：列表无 LazyColumn item key 时，删除后上移的条目
-                                // 会复用同位组合位并继承「已滑开」的 dismiss 状态，
-                                // 触发级联 confirm 误删下一行（实测一次滑动删掉两条）。
-                                // 绑定 record.id 后上移条目拿到全新 Settled 状态。
-                                key(record.id) {
-                                    SwipeDismissRecordItem(
-                                        record = record,
-                                        onDelete = { deleteRecord(record) },
-                                        onLongClick = { deleteRecord(record) }
-                                    )
-                                }
-                            }
                         }
                     }
                 }
