@@ -49,6 +49,12 @@
             android:name=".notification.AlarmReceiver"
             android:exported="false" />
 
+        <!-- 快捷记录入口：提醒通知与桌面小部件的「+200/350/500」按钮都发到这里。
+             exported=false：只接受应用内显式广播，第三方无法伪造触发 -->
+        <receiver
+            android:name=".notification.QuickAddReceiver"
+            android:exported="false" />
+
         <!-- exported=true 是安全的：BOOT_COMPLETED / MY_PACKAGE_REPLACED 是系统受保护广播，
              只能由系统发出，第三方无法伪造触发。覆盖安装（含应用内更新）会清掉进程与闹钟，
              靠这里补排（restoreAlarmIfNeeded） -->

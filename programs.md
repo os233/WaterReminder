@@ -52,10 +52,11 @@ Android 系统 / 用户
 
 ### 2.3 提醒与系统协调模块 `notification/`
 
-**位置：** `notification/AlarmManagerHelper.kt`、`notification/AlarmReceiver.kt`、`notification/BootReceiver.kt`
+**位置：** `notification/AlarmManagerHelper.kt`、`notification/AlarmReceiver.kt`、`notification/QuickAddReceiver.kt`、`notification/BootReceiver.kt`
 
 - `AlarmManagerHelper` 读取提醒与免打扰偏好，安排、取消或恢复精确闹钟，并持久化恢复所需的下一次触发时间。
-- `AlarmReceiver` 接收提醒广播；先衔接下一次调度，再按免打扰规则决定是否发布通知。通知通过 `NotificationManager` / `NotificationCompat` 建立，点击后回到主界面。
+- `AlarmReceiver` 接收提醒广播；先衔接下一次调度，再按免打扰规则决定是否发布通知。通知通过 `NotificationManager` / `NotificationCompat` 建立，点击后回到主界面，并附带三档快捷记录动作按钮。
+- `QuickAddReceiver` 接收提醒通知与小部件的快捷记录广播；按固定「水」语义写一条饮水记录（钳制 1–5000 ml），并以独立静默渠道在原通知 ID 上重发 3 秒自动消失的反馈。它只补记录与反馈，不衔接提醒调度。
 - `BootReceiver` 在设备启动或应用更新等系统事件后，根据已保存状态恢复有效提醒。
 - 本模块拥有闹钟和通知的系统交互边界，不负责 Compose 页面状态或饮水记录持久化。提醒调度、跨午夜免打扰、后台引导及禁止前台保活等不变量见 `AGENTS.md`。
 

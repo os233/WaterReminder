@@ -18,8 +18,9 @@ private const val TAG = "WaterReminder"
 class AlarmReceiver : BroadcastReceiver() {
 
     companion object {
-        // 固定 ID：新提醒覆盖上一条，避免通知栏越积越多
-        private const val REMINDER_NOTIFICATION_ID = 1001
+        // 固定 ID：新提醒覆盖上一条，避免通知栏越积越多。
+        // internal：QuickAddReceiver 的快捷记录反馈复用同一 ID 覆盖本通知
+        internal const val REMINDER_NOTIFICATION_ID = 1001
 
         /**
          * 渠道 ID 带 `_v2`：v1 创建时没开震动，而 `createNotificationChannel()` 只更新名称与描述，
@@ -98,6 +99,22 @@ class AlarmReceiver : BroadcastReceiver() {
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setAutoCancel(true)
             .setContentIntent(pendingIntent)
+            // 快捷记录动作：点一下直接记一杯，不必解锁进应用（写库与反馈见 QuickAddReceiver）。
+            // 显式组件广播，exported=false 即可送达；三个动作各用独立 requestCode——
+            // PendingIntent.filterEquals 不比较 extras，同码会互相覆盖
+            .apply {
+                QuickAddReceiver.QUICK_AMOUNTS.forEachIndexed { index, volume ->
+                    val quickAddIntent = PendingIntent.getBroadcast(
+                        context,
+                        2001 + index,
+                        Intent(context, QuickAddReceiver::class.java)
+                            .setAction(QuickAddReceiver.ACTION_QUICK_ADD)
+                            .putExtra(QuickAddReceiver.EXTRA_AMOUNT, volume),
+                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                    )
+                    addAction(0, "+$volume ml", quickAddIntent)
+                }
+            }
             // 不调 setVibrate()：Android 8+ 的震动由渠道决定，在这里设了会被静默忽略（见上面渠道配置）
             .build()
 
