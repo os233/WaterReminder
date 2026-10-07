@@ -39,6 +39,10 @@ interface WaterRecordDao {
 
     @Query("SELECT date(timestamp) as recordDate, CAST(SUM(amount * hydration) AS INTEGER) as total FROM water_records GROUP BY date(timestamp) ORDER BY recordDate DESC")
     fun getAllDailyTotals(): Flow<List<DailyTotal>>
+
+    // 全量导出（CSV）用：按时间升序，表格软件里按时间顺序阅读
+    @Query("SELECT * FROM water_records ORDER BY timestamp ASC")
+    suspend fun getAllRecordsForExport(): List<WaterRecord>
 }
 
 data class DailyTotal(

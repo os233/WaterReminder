@@ -1,5 +1,10 @@
 package com.example.waterreminder.ui
 
+import android.content.Context
+import android.net.Uri
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -14,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -26,13 +32,17 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.waterreminder.data.CsvExport
 import com.example.waterreminder.data.DrinkType
 import com.example.waterreminder.data.UserPrefs
 import com.example.waterreminder.data.WaterRecord
 import com.example.waterreminder.data.WaterRecordDao
 import com.example.waterreminder.widget.WaterWidgetUpdater
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -82,6 +92,15 @@ fun HistoryScreen(
         }
     }
 
+    // CSV 导出：SAF CreateDocument 零权限；用户取消（uri == null）静默返回
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/csv")
+    ) { uri ->
+        if (uri != null) {
+            scope.launch { exportAllRecords(context, dao, uri) }
+        }
+    }
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
@@ -104,6 +123,12 @@ fun HistoryScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = { exportLauncher.launch(exportFileName()) }) {
+                        Icon(
+                            Icons.Default.FileDownload,
+                            contentDescription = "导出 CSV"
+                        )
+                    }
                     if (selectedDate == today.toString()) {
                         IconButton(onClick = { showDeleteConfirm = true }) {
                             Icon(
@@ -346,5 +371,28 @@ fun HistoryScreen(
             },
             shape = RoundedCornerShape(20.dp)
         )
+    }
+}
+
+/** 导出文件名：water_records_20261007.csv */
+private fun exportFileName(): String =
+    "water_records_" + LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd")) + ".csv"
+
+/**
+ * 全量导出为 CSV（SAF 已选定目标后执行）：IO 线程查全量、拼 CSV、写流。
+ * 成功/失败都给 Toast；用户取消在调用方已静默；云盘供应商的报错原样透出，不吞失败。
+ */
+private suspend fun exportAllRecords(context: Context, dao: WaterRecordDao, uri: Uri) {
+    try {
+        val records = dao.getAllRecordsForExport()
+        val csv = withContext(Dispatchers.IO) { CsvExport.buildCsv(records) }
+        withContext(Dispatchers.IO) {
+            val output = context.contentResolver.openOutputStream(uri)
+                ?: throw IllegalStateException("所选位置无法写入")
+            output.use { it.write(csv.toByteArray(Charsets.UTF_8)) }
+        }
+        Toast.makeText(context, "已导出 ${records.size} 条记录", Toast.LENGTH_SHORT).show()
+    } catch (e: Exception) {
+        Toast.makeText(context, "导出失败：${e.message}", Toast.LENGTH_LONG).show()
     }
 }
