@@ -80,6 +80,15 @@ Android 系统 / 用户
 - 更新模块承载检查、解析校验以及下载（`DownloadManager`）、SHA-256 核对、安装器调用的完整链路（均实现于 `UpdateChecker`）；各环节不得绕过 `AGENTS.md` 规定的安全步骤。
 - 更新检查与本地饮水记录、提醒调度相互独立。网络失败不得阻断应用其他功能。
 
+### 2.6 桌面小部件模块 `widget/`
+
+**位置：** `widget/WaterWidgetProvider.kt`、`widget/WaterWidgetUpdater.kt`
+
+- `WaterWidgetProvider` 是 AppWidgetProvider，只在系统触发 `onUpdate` 时委托刷新。
+- `WaterWidgetUpdater` 是唯一知道如何渲染与推送小部件的组件：读取当日折算总量与每日目标，构造 RemoteViews 推送到全部实例；饮水记录或目标变化后由数据变更方调用，小部件自身不观察数据库。
+- 小部件的「今天」在每次刷新时以 `LocalDate.now()` 计算，并靠 `updatePeriodMillis` 的 30 分钟系统周期兜底跨午夜；`rememberToday()` 的生命周期刷新约束只针对应用内 Compose 界面（见 AGENTS.md）。
+- 快捷记录按钮复用 `notification/QuickAddReceiver`，不另建写入路径。
+
 ## 3. 核心数据流与程序协作
 
 ### 3.1 饮水记录与每日概览
@@ -115,6 +124,9 @@ MainActivity / 应用装配
 
 notification/ ──► Android AlarmManager、BroadcastReceiver、Notification API
                └──► 提醒偏好与调度逻辑
+
+widget/ ──► Android AppWidgetManager、RemoteViews
+        └──► data/ DAO 与偏好、notification/QuickAddReceiver（复用快捷记录入口）
 
 data/remote/ ──► OkHttp、JSON 解析 API、更新偏好
 data/         ──► Room、SQLite、SharedPreferences
@@ -176,7 +188,8 @@ app/src/main/java/com/example/waterreminder/
 ├── ui/                              # 页面、日期状态与主题
 ├── data/                            # Room、DAO、实体、轻量偏好
 │   └── remote/                      # 远程更新协议与检查
-└── notification/                   # 闹钟、系统广播与通知
+├── notification/                    # 闹钟、系统广播、通知与快捷记录入口
+└── widget/                          # 桌面小部件（进度与快捷记录）
 
 app/src/main/res/                    # Android Manifest、主题、图标及 FileProvider 路径
 docs/                                # GitHub Pages 静态站点与发布 Manifest

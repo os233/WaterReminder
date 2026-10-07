@@ -12,8 +12,10 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.example.waterreminder.R
+import com.example.waterreminder.data.UserPrefs
 import com.example.waterreminder.data.WaterDatabase
 import com.example.waterreminder.data.WaterRecord
+import com.example.waterreminder.widget.WaterWidgetUpdater
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -56,6 +58,8 @@ class QuickAddReceiver : BroadcastReceiver() {
                 val dao = WaterDatabase.getDatabase(context).waterRecordDao()
                 dao.insert(WaterRecord(amount = amount))
                 val todayTotal = dao.getTodayTotal(LocalDate.now().toString()).first() ?: 0
+                // 桌面小部件同步进度；未添加小部件时 push 内部自会跳过
+                WaterWidgetUpdater.push(context, todayTotal, UserPrefs.getDailyGoal(context))
                 showFeedback(context, amount, todayTotal)
             } finally {
                 pendingResult.finish()

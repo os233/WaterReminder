@@ -3,4 +3,11 @@
     <color name="background">#F5F7FA</color>
     <!-- 自适应图标背景：品牌蓝，与内置主题 primary 同源 -->
     <color name="ic_launcher_background">#1976D2</color>
+    <!-- 桌面小部件（RemoteViews 不吃应用主题，颜色走资源 + values-night 适配深色） -->
+    <color name="widget_card_bg">#FFFFFF</color>
+    <color name="widget_text_primary">#1B1B1F</color>
+    <color name="widget_text_secondary">#6B6E76</color>
+    <color name="widget_track">#E3E6EB</color>
+    <color name="widget_accent">#1976D2</color>
+    <color name="widget_button_text">#FFFFFF</color>
 </resources>

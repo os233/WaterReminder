@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 小部件卡片底：RemoteViews 无法使用 Compose/Material 主题，圆角与颜色全部走资源 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <corners android:radius="16dp" />
+    <solid android:color="@color/widget_card_bg" />
+</shape>

@@ -55,6 +55,19 @@
             android:name=".notification.QuickAddReceiver"
             android:exported="false" />
 
+        <!-- 4x2 桌面小部件：进度 + 快捷记录。APPWIDGET_UPDATE 是系统受保护广播，
+             exported=false 即可接收系统投递，第三方无法伪造 -->
+        <receiver
+            android:name=".widget.WaterWidgetProvider"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_water_info" />
+        </receiver>
+
         <!-- exported=true 是安全的：BOOT_COMPLETED / MY_PACKAGE_REPLACED 是系统受保护广播，
              只能由系统发出，第三方无法伪造触发。覆盖安装（含应用内更新）会清掉进程与闹钟，
              靠这里补排（restoreAlarmIfNeeded） -->

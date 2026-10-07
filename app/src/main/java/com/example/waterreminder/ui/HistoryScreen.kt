@@ -30,6 +30,7 @@ import com.example.waterreminder.data.DrinkType
 import com.example.waterreminder.data.UserPrefs
 import com.example.waterreminder.data.WaterRecord
 import com.example.waterreminder.data.WaterRecordDao
+import com.example.waterreminder.widget.WaterWidgetUpdater
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 
@@ -68,6 +69,7 @@ fun HistoryScreen(
     fun deleteRecord(record: WaterRecord) {
         scope.launch {
             dao.delete(record)
+            WaterWidgetUpdater.refresh(context)
             val result = snackbarHostState.showSnackbar(
                 message = "已删除 ${DrinkType.byId(record.drinkType).label} ${record.amount} ml",
                 actionLabel = "撤销",
@@ -75,6 +77,7 @@ fun HistoryScreen(
             )
             if (result == SnackbarResult.ActionPerformed) {
                 dao.insert(record.copy(id = 0))
+                WaterWidgetUpdater.refresh(context)
             }
         }
     }
@@ -326,7 +329,10 @@ fun HistoryScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        scope.launch { dao.deleteRecordsByDate(today.toString()) }
+                        scope.launch {
+                            dao.deleteRecordsByDate(today.toString())
+                            WaterWidgetUpdater.refresh(context)
+                        }
                         showDeleteConfirm = false
                     }
                 ) {

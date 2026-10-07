@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 4x2 小部件。targetCellWidth/Height 仅 API 31+ 生效，API 26-30 由 minWidth/minHeight 兜底
+     （官方换算：n 格 ≈ 70n - 30dp，4 格 250dp、2 格 110dp）。
+     updatePeriodMillis 的 30 分钟是系统允许的最小周期，兜底跨午夜日期翻新；
+     日常刷新由数据变更方主动推送（WaterWidgetUpdater）。 -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="250dp"
+    android:minHeight="110dp"
+    android:targetCellWidth="4"
+    android:targetCellHeight="2"
+    android:updatePeriodMillis="1800000"
+    android:initialLayout="@layout/widget_water_4x2"
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen" />

@@ -1,5 +1,6 @@
 package com.example.waterreminder.ui
 
+import android.content.Context
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -40,6 +41,7 @@ import com.example.waterreminder.data.DrinkType
 import com.example.waterreminder.data.UserPrefs
 import com.example.waterreminder.data.WaterRecord
 import com.example.waterreminder.data.WaterRecordDao
+import com.example.waterreminder.widget.WaterWidgetUpdater
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -380,21 +382,21 @@ fun WaterReminderScreen(
                     amount = 200,
                     icon = selectedDrink.icon,
                     color = selectedDrink.color,
-                    onClick = { recordDrink(scope, dao, selectedDrink, 200, snackbarHostState) },
+                    onClick = { recordDrink(context, scope, dao, selectedDrink, 200, snackbarHostState) },
                     modifier = Modifier.weight(1f)
                 )
                 WaterAmountCard(
                     amount = 350,
                     icon = selectedDrink.icon,
                     color = selectedDrink.color,
-                    onClick = { recordDrink(scope, dao, selectedDrink, 350, snackbarHostState) },
+                    onClick = { recordDrink(context, scope, dao, selectedDrink, 350, snackbarHostState) },
                     modifier = Modifier.weight(1f)
                 )
                 WaterAmountCard(
                     amount = 500,
                     icon = selectedDrink.icon,
                     color = selectedDrink.color,
-                    onClick = { recordDrink(scope, dao, selectedDrink, 500, snackbarHostState) },
+                    onClick = { recordDrink(context, scope, dao, selectedDrink, 500, snackbarHostState) },
                     modifier = Modifier.weight(1f)
                 )
             }
@@ -501,7 +503,7 @@ fun WaterReminderScreen(
                     val amount = customAmount.toIntOrNull()
                     // 非法输入不再静默丢弃：标红报错并留在弹窗里改
                     if (amount != null && amount in 1..5000) {
-                        recordDrink(scope, dao, selectedDrink, amount, snackbarHostState)
+                        recordDrink(context, scope, dao, selectedDrink, amount, snackbarHostState)
                         showCustomDialog = false
                         customAmount = ""
                     } else {
@@ -574,6 +576,8 @@ fun WaterReminderScreen(
                     val newGoal = sliderValue.toInt()
                     goal = newGoal
                     UserPrefs.setDailyGoal(context, newGoal)
+                    // 目标变化直接影响小部件进度分母，随手推送一次
+                    WaterWidgetUpdater.push(context, todayTotal ?: 0, newGoal)
                     showGoalDialog = false
                 }) {
                     Text("保存")
@@ -594,6 +598,7 @@ fun WaterReminderScreen(
  * 不应逼用户去历史页长按找回。撤销按插入返回的行 id 精确删除，不影响其他记录。
  */
 private fun recordDrink(
+    context: Context,
     scope: kotlinx.coroutines.CoroutineScope,
     dao: WaterRecordDao,
     drink: DrinkType,
@@ -608,6 +613,7 @@ private fun recordDrink(
                 hydration = drink.hydration
             )
         )
+        WaterWidgetUpdater.refresh(context)
         val result = snackbarHostState.showSnackbar(
             message = "已记录 ${drink.label} $amount ml",
             actionLabel = "撤销",
@@ -615,6 +621,7 @@ private fun recordDrink(
         )
         if (result == SnackbarResult.ActionPerformed) {
             dao.deleteById(id)
+            WaterWidgetUpdater.refresh(context)
         }
     }
 }
