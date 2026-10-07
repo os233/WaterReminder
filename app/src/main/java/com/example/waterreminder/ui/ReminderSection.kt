@@ -442,7 +442,6 @@ internal fun hasNotificationPermission(context: Context): Boolean {
  * 界面看着正常，实际再也不会响。国产 ROM 尤其激进。
  */
 private fun isIgnoringBatteryOptimizations(context: Context): Boolean {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return true
     val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
     return powerManager.isIgnoringBatteryOptimizations(context.packageName)
 }
@@ -453,7 +452,6 @@ private fun isIgnoringBatteryOptimizations(context: Context): Boolean {
  * 这里先把系统层面能做的做掉。
  */
 private fun requestIgnoreBatteryOptimization(context: Context) {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
     val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
         data = Uri.parse("package:${context.packageName}")
     }

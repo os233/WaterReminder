@@ -30,7 +30,7 @@ object WaterWidgetUpdater {
     suspend fun refresh(context: Context) = withContext(Dispatchers.IO) {
         val appContext = context.applicationContext
         val dao = WaterDatabase.getDatabase(appContext).waterRecordDao()
-        val total = dao.getTodayTotal(LocalDate.now().toString()).first() ?: 0
+        val total = dao.getDailyTotal(LocalDate.now().toString()).first() ?: 0
         push(appContext, total, UserPrefs.getDailyGoal(appContext))
     }
 

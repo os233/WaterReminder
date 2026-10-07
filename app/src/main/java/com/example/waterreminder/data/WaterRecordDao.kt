@@ -18,18 +18,15 @@ interface WaterRecordDao {
     @Query("DELETE FROM water_records WHERE id = :id")
     suspend fun deleteById(id: Long)
 
-    // 总量按"水合系数"折算：SUM(amount * hydration)，结果取整。
+    // 某日折算总量（「今天」= 调用方传 today.toString()）：SUM(amount * hydration) 取整。
     // ⚠️ date 必须由调用方显式传入，不能给 `LocalDate.now()` 默认值：默认值只在调用那一刻
     // 求值一次，一旦界面持有它就不再随跨天刷新，正是「日期停在旧值」那类 bug 的温床。
     // 界面侧的「今天」统一来自 ui/RememberToday.kt 的 rememberToday()。
     @Query("SELECT CAST(SUM(amount * hydration) AS INTEGER) FROM water_records WHERE date(timestamp) = date(:date)")
-    fun getTodayTotal(date: String): Flow<Int?>
+    fun getDailyTotal(date: String): Flow<Int?>
 
     @Query("SELECT * FROM water_records WHERE date(timestamp) = date(:date) ORDER BY timestamp DESC")
     fun getRecordsByDate(date: String): Flow<List<WaterRecord>>
-
-    @Query("SELECT CAST(SUM(amount * hydration) AS INTEGER) FROM water_records WHERE date(timestamp) = date(:date)")
-    fun getDailyTotal(date: String): Flow<Int?>
 
     @Query("SELECT DISTINCT date(timestamp) as recordDate FROM water_records ORDER BY recordDate DESC")
     fun getAllRecordDates(): Flow<List<String>>

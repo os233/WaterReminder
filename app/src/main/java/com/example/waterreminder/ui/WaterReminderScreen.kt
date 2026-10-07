@@ -11,7 +11,6 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -71,7 +70,7 @@ fun WaterReminderScreen(
     val today = rememberToday()
 
     val todayTotal by remember(today) {
-        dao.getTodayTotal(today.toString())
+        dao.getDailyTotal(today.toString())
     }.collectAsState(initial = 0)
     // 数字滚动：记录后总数平滑增长（即时反馈，Neer/HydroTracker 式）
     val animatedTotal by animateIntAsState(

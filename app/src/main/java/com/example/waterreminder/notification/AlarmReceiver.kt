@@ -6,7 +6,6 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.example.waterreminder.MainActivity
@@ -55,33 +54,31 @@ class AlarmReceiver : BroadcastReceiver() {
         val channelId = CHANNEL_ID
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            // 换 ID 的迁移：旧渠道留着会让通知设置里出现两个同名的「喝水提醒」
-            if (notificationManager.getNotificationChannel(LEGACY_CHANNEL_ID) != null) {
-                notificationManager.deleteNotificationChannel(LEGACY_CHANNEL_ID)
-            }
-            // 同上：常驻前台服务已移除，它用过的渠道一并清掉
-            if (notificationManager.getNotificationChannel(KEEP_ALIVE_CHANNEL_ID) != null) {
-                notificationManager.deleteNotificationChannel(KEEP_ALIVE_CHANNEL_ID)
-            }
-
-            val channel = NotificationChannel(
-                channelId,
-                "喝水提醒",
-                NotificationManager.IMPORTANCE_HIGH
-            ).apply {
-                description = "定时提醒你喝水"
-                // 震动必须设在渠道上：Android 8+ 会忽略 NotificationCompat.setVibrate()，
-                // 而新建渠道默认 mVibrationEnabled=false，不写这两行就永远不会震
-                enableVibration(true)
-                vibrationPattern = VIBRATION_PATTERN
-                // 这里刻意不调 setBypassDnd(true)：2026-09-18 实测（Android 17、且
-                // ACCESS_NOTIFICATION_POLICY 已 granted）渠道的 mBypassDnd 仍是 false，
-                // 拿不到任何落地效果；而且夜间本就不该绕开用户自己开的系统免打扰 ——
-                // 这个需求已由本应用内置的「夜间免打扰时段」覆盖
-            }
-            notificationManager.createNotificationChannel(channel)
+        // minSdk 26 起渠道必然可用；渠道 ID 迁移（v1/keep_alive → v2）对老升级用户执行
+        if (notificationManager.getNotificationChannel(LEGACY_CHANNEL_ID) != null) {
+            notificationManager.deleteNotificationChannel(LEGACY_CHANNEL_ID)
         }
+        // 常驻前台服务已移除，它用过的渠道一并清掉
+        if (notificationManager.getNotificationChannel(KEEP_ALIVE_CHANNEL_ID) != null) {
+            notificationManager.deleteNotificationChannel(KEEP_ALIVE_CHANNEL_ID)
+        }
+
+        val channel = NotificationChannel(
+            channelId,
+            "喝水提醒",
+            NotificationManager.IMPORTANCE_HIGH
+        ).apply {
+            description = "定时提醒你喝水"
+            // 震动必须设在渠道上：Android 8+ 会忽略 NotificationCompat.setVibrate()，
+            // 而新建渠道默认 mVibrationEnabled=false，不写这两行就永远不会震
+            enableVibration(true)
+            vibrationPattern = VIBRATION_PATTERN
+            // 这里刻意不调 setBypassDnd(true)：2026-09-18 实测（Android 17、且
+            // ACCESS_NOTIFICATION_POLICY 已 granted）渠道的 mBypassDnd 仍是 false，
+            // 拿不到任何落地效果；而且夜间本就不该绕开用户自己开的系统免打扰 ——
+            // 这个需求已由本应用内置的「夜间免打扰时段」覆盖
+        }
+        notificationManager.createNotificationChannel(channel)
 
         val openIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP

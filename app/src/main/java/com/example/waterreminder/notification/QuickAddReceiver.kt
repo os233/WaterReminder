@@ -57,7 +57,7 @@ class QuickAddReceiver : BroadcastReceiver() {
             try {
                 val dao = WaterDatabase.getDatabase(context).waterRecordDao()
                 dao.insert(WaterRecord(amount = amount))
-                val todayTotal = dao.getTodayTotal(LocalDate.now().toString()).first() ?: 0
+                val todayTotal = dao.getDailyTotal(LocalDate.now().toString()).first() ?: 0
                 // 桌面小部件同步进度；未添加小部件时 push 内部自会跳过
                 WaterWidgetUpdater.push(context, todayTotal, UserPrefs.getDailyGoal(context))
                 showFeedback(context, amount, todayTotal)
@@ -85,18 +85,17 @@ class QuickAddReceiver : BroadcastReceiver() {
         }
         val notificationManager =
             context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            // IMPORTANCE_LOW 无声音无震动：这是用户主动点击后的确认，不能再震一次
-            notificationManager.createNotificationChannel(
-                NotificationChannel(
-                    FEEDBACK_CHANNEL_ID,
-                    "快捷记录反馈",
-                    NotificationManager.IMPORTANCE_LOW
-                ).apply {
-                    description = "点按通知或小部件记录成功后的轻提示，静默且自动消失"
-                }
-            )
-        }
+        // IMPORTANCE_LOW 无声音无震动：这是用户主动点击后的确认，不能再震一次
+        // （minSdk 26 起渠道必然可用）
+        notificationManager.createNotificationChannel(
+            NotificationChannel(
+                FEEDBACK_CHANNEL_ID,
+                "快捷记录反馈",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "点按通知或小部件记录成功后的轻提示，静默且自动消失"
+            }
+        )
         val notification =
             NotificationCompat.Builder(context, FEEDBACK_CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_water_drop)

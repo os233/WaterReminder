@@ -4,9 +4,10 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
-    <!-- 应用内更新的安装包由 DownloadManager 后台拉取：不想要系统通知栏的常驻「正在下载」，
-         下载完成的广播由 UpdateChecker 自己注册接收并处理 -->
-    <uses-permission android:name="android.permission.DOWNLOAD_WITHOUT_NOTIFICATION" />
+    <!-- 应用内更新的安装包由 DownloadManager 后台拉取：下载中与完成都会出现在通知栏
+         （Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED，见 UpdateChecker），
+         完成后的广播由 UpdateChecker 自己注册接收并处理。
+         注：DOWNLOAD_WITHOUT_NOTIFICATION 权限只在请求 VISIBILITY_HIDDEN 时才需要，不声明 -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- 两个精确闹钟权限并存是为覆盖 API 31~ 最新版本：
          USE_EXACT_ALARM 是 API 33+ 才有的安装即授予权限（面向闹钟/计时类应用），33+ 由它兜底；
@@ -20,7 +21,6 @@
              夜间也不该绕开用户自己开的系统免打扰 —— 该需求由应用内置的免打扰时段覆盖 -->
         <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
         <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-        <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <!-- allowBackup 保持开启：饮水记录随系统备份/换机迁移有价值；本应用无账号体系，
          备份内容不含凭据类敏感数据 -->
