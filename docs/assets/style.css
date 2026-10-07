@@ -116,12 +116,28 @@ p { margin: 0 0 14px; }
 .hero {
   display: flex;
   align-items: center;
-  gap: 28px;
+  gap: 30px;
   flex-wrap: wrap;
-  padding: 8px 0 4px;
+  padding: 26px 24px;
+  margin: 0 -4px;
+  border-radius: 26px;
+  background:
+    radial-gradient(560px 300px at 82% 8%,
+      color-mix(in srgb, var(--primary) 10%, transparent), transparent 72%),
+    radial-gradient(420px 260px at 4% 96%,
+      color-mix(in srgb, var(--accent) 8%, transparent), transparent 70%);
 }
 .hero .text { flex: 1 1 340px; }
-.hero .mark { flex: 0 0 auto; }
+.hero .mark { flex: 0 1 auto; margin: 0 auto; }
+.hero .mark img {
+  display: block;
+  width: clamp(215px, 24vw, 270px);
+  height: auto;
+  border-radius: 22px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
 
 .actions { display: flex; gap: 12px; flex-wrap: wrap; margin: 22px 0 6px; }
 
@@ -146,9 +162,98 @@ p { margin: 0 0 14px; }
 .btn-ghost:hover { background: var(--surface-soft); }
 .btn[aria-disabled="true"] { opacity: .55; pointer-events: none; }
 
+/* ── 信任徽章行 ───────────────────────────────────── */
+.badges {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 18px 0 0;
+  padding: 0;
+}
+.badges li {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 12px;
+}
+.badges li::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
 /* ── 功能列表 ─────────────────────────────────────── */
-.feature h3 { margin-top: 0; display: flex; align-items: center; gap: 8px; }
+.card.feature {
+  transition: transform .18s ease, border-color .18s ease;
+}
+.card.feature:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--primary) 32%, var(--border));
+}
+@media (prefers-reduced-motion: reduce) {
+  .card.feature, .card.feature:hover { transition: none; transform: none; }
+}
+.feature .f-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  margin-bottom: 10px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--primary) 11%, transparent);
+  color: var(--primary);
+}
+.feature .f-icon svg { width: 21px; height: 21px; }
+.feature h3 { margin: 0 0 6px; }
 .feature p { margin: 0; color: var(--muted); font-size: 14.5px; }
+
+/* 末张卡横贯整行：图标居左、文字居右，避免 10 张卡在 3 列网格下尾行只挂 1 张 */
+@media (min-width: 720px) {
+  .grid .feature:last-child {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    column-gap: 16px;
+    align-items: center;
+  }
+  .grid .feature:last-child .f-icon { grid-row: 1 / span 2; margin-bottom: 0; }
+  .grid .feature:last-child h3 { margin: 0 0 4px; }
+  .grid .feature:last-child p { margin: 0; max-width: 62ch; }
+}
+
+/* ── 界面一览 ─────────────────────────────────────── */
+.screens {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 240px));
+  justify-content: center;
+  gap: 18px;
+}
+.screens figure { margin: 0; }
+.screens img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 18px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+.screens figcaption {
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 8px;
+}
 
 table { width: 100%; border-collapse: collapse; font-size: 14.5px; margin: 6px 0 18px; }
 th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); }

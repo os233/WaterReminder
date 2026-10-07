@@ -42,13 +42,17 @@ APK asset 与 Release 页面，页面上的说明由 CI 从 `changelog` 生成�
 ```bash
 # 1. 改 app/build.gradle.kts 里的 versionCode 与 versionName（versionCode 必须严格递增）
 # 2. 手写 docs/version.json 的 changelog —— 这是它唯一人工维护的字段
-# 3. 本地构建 + 归档 + 校验（不会改 version.json 的机器字段，原因见下）
+# 3. 若本版有界面或功能的可见变化：更新 docs/images/ 三张截图（README 界面预览与官网首页
+#    共用同一批文件，改一次两边生效），并同步 docs/index.html 功能卡片与
+#    docs/docs/index.html 文档页文案。版本号、下载链接、更新说明不用管 ——
+#    官网会随 Release 自动更新（原理见下「GitHub Pages」）
+# 4. 本地构建 + 归档 + 校验（不会改 version.json 的机器字段，原因见下）
 ./scripts/release.sh
-# 4. 提交并推 master（只加这两个文件；不要 git add -A，会扫进无关残留）
+# 5. 提交并推 master（只加这两个文件；不要 git add -A，会扫进无关残留）
 #    此时 version.json 的版本号还是旧的，App 不会提示更新，也不会 404
 git add app/build.gradle.kts docs/version.json
 git commit -m "release: 发布 <版本号>" && git push origin master
-# 5. 打 tag 并推送 → CI 构建 APK、创建 Release、上传 asset，然后把 version.json 的
+# 6. 打 tag 并推送 → CI 构建 APK、创建 Release、上传 asset，然后把 version.json 的
 #    versionCode / versionName / apkUrl / sha256 写回并推 master
 git tag -a v<版本号> -m "release: v<版本号>" && git push origin v<版本号>
 ```
@@ -230,14 +234,15 @@ Pages 源为 `master` 分支的 `/docs` 目录，站点就是 `docs/` 下的静�
 
 | 路径 | 内容 |
 | --- | --- |
-| `/` | 首页：功能、水合系数、最新版本 |
+| `/` | 首页：功能、界面一览、水合系数、最新版本 |
 | `/download/` | 下载页：最新版本、APK 直链、SHA-256 |
 | `/docs/` | 使用文档与常见问题 |
 | `/changelog/` | 更新日志，前端读 GitHub Releases API，失败或列表为空时退到 `version.json` 里的最新正式版 |
 | `/privacy/` | 隐私政策 |
 
 `docs/assets/site.js` 在浏览器里请求 GitHub 的公开 API，所以版本信息与更新日志都不需要手工同步 ——
-Release 一发布，页面内容就跟着变。
+Release 一发布，页面内容就跟着变。功能介绍、使用文档与界面截图是静态文案，需要随发版手动同步，
+对应「发布流程」的第 3 步。
 
 未认证的 API 只有 60 次/小时，且配额**按出口 IP 共享**（公司、校园网、运营商 NAT 下很容易被
 别人的请求用光）。但这**不是**把 `version.json` 当权威来显示的理由：那个文件是手工维护的，

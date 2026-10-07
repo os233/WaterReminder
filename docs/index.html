@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>喝水提醒 WaterReminder — 简单、开源的饮水提醒 App</title>
-<meta name="description" content="WaterReminder 是一个轻量的 Android 喝水提醒应用：按小时提醒喝水，记录每一杯，按饮品类型折算真实补水量。无广告、无账号、不收集数据。">
+<meta name="description" content="WaterReminder 是一个轻量的 Android 喝水提醒应用：按小时提醒喝水，首页、通知、桌面小部件都能一键记录，并按饮品类型折算真实补水量。开源、无广告、无账号、数据不出设备。">
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2.6c3.9 4.5 6.4 7.9 6.4 11.2A6.4 6.4 0 0 1 12 20.2a6.4 6.4 0 0 1-6.4-6.4c0-3.3 2.5-6.7 6.4-11.2Z' fill='%231b7cc0'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="assets/style.css">
 </head>
@@ -37,7 +37,7 @@
   <section class="hero">
     <div class="text">
       <h1>喝水提醒 WaterReminder</h1>
-      <p class="lede">按小时提醒你喝水，记录每一杯，并按饮品类型折算真实补水量。开源、无广告、无账号、不上传任何数据。</p>
+      <p class="lede">按小时提醒你喝水。首页、通知、桌面小部件都能一键记录，并按饮品类型折算真实补水量。开源、无广告、无账号、数据不出设备。</p>
       <div class="actions">
         <a class="btn btn-primary" data-download href="https://github.com/os233/WaterReminder/releases/latest">
           下载 APK
@@ -48,39 +48,134 @@
         最新版本 <strong data-latest-version>读取中…</strong>
         <span data-latest-date></span>
       </p>
+      <ul class="badges">
+        <li>MIT 开源</li>
+        <li>无广告 · 无账号</li>
+        <li>数据不出设备</li>
+        <li>Android 8.0+</li>
+      </ul>
+    </div>
+    <div class="mark">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="images/home-dark.png">
+        <img src="images/home-light.png" width="1080" height="1920"
+             alt="喝水提醒首页截图：水球进度环、五张饮品快速记录卡与 +200 / +350 / +500 三档快捷按钮">
+      </picture>
     </div>
   </section>
 
   <h2>功能</h2>
   <div class="grid">
     <div class="card feature">
-      <h3>一键记录</h3>
-      <p>首页大卡片一键记录 200 / 350 / 500 ml，5 种饮品卡片各带身份色，大屏下自适应多列；也可输入任意毫升数，范围外输入红框提示。</p>
+      <div class="f-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="8.6"/><path d="M12 8.2v7.6M8.2 12h7.6"/>
+        </svg>
+      </div>
+      <h3>多入口快捷记录</h3>
+      <p>首页、提醒通知、桌面小部件三处都有 +200 / +350 / +500 快捷按钮，点一下就记上；也可输入任意毫升数（1 – 5000，范围外红框提示）。</p>
     </div>
     <div class="card feature">
+      <div class="f-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 5 5 19"/><circle cx="7.2" cy="7.2" r="2.4"/><circle cx="16.8" cy="16.8" r="2.4"/>
+        </svg>
+      </div>
       <h3>按水合系数折算</h3>
-      <p>不同饮品的补水效果不一样，按系数计入当日总量，而不是简单累加毫升数。</p>
+      <p>不同饮品的补水效果不一样，按系数计入当日总量，而不是简单累加毫升数。例如 200 ml 咖啡按 160 ml 计。</p>
     </div>
     <div class="card feature">
-      <h3>目标与进度</h3>
-      <p>每日目标 1000–4000 ml 可调，首页水球波浪进度随饮水量上升、水面持续流动，并统计连续达标天数。</p>
+      <div class="f-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="7.8" r="3.4"/><path d="M5.2 20c.9-3.4 3.6-5.3 6.8-5.3s5.9 1.9 6.8 5.3"/>
+        </svg>
+      </div>
+      <h3>个性化目标</h3>
+      <p>首次使用按性别、体重、运动量算出推荐每日目标（EFSA 口径，可手改）；日常可在 1000 – 5000 ml 间以 100 ml 步长调整。</p>
     </div>
     <div class="card feature">
+      <div class="f-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2.6c3.9 4.5 6.4 7.9 6.4 11.2A6.4 6.4 0 0 1 12 20.2a6.4 6.4 0 0 1-6.4-6.4c0-3.3 2.5-6.7 6.4-11.2Z"/>
+          <path d="M9 13.4c0 1.7 1.3 3 3 3"/>
+        </svg>
+      </div>
+      <h3>水球进度与连续达标</h3>
+      <p>首页水球波浪进度随饮水量上升、水面持续流动，总数带滚动动画，并统计连续达标天数。</p>
+    </div>
+    <div class="card feature">
+      <div class="f-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 9.2a6 6 0 0 0-12 0c0 4.6-1.8 6-1.8 6h15.6s-1.8-1.4-1.8-6"/>
+          <path d="M10.4 19a1.9 1.9 0 0 0 3.2 0"/>
+        </svg>
+      </div>
       <h3>可靠提醒</h3>
-      <p>1 / 2 / 3 小时间隔循环提醒；免打扰时段支持跨午夜（如 22:00 – 次日 08:00）；开机自动恢复。</p>
+      <p>1 / 2 / 3 小时间隔循环提醒；免打扰时段支持跨午夜（如 22:00 – 次日 08:00）；开机自动恢复提醒。</p>
     </div>
     <div class="card feature">
+      <div class="f-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M5.5 20v-7M12 20V5.5M18.5 20V9.5"/>
+        </svg>
+      </div>
       <h3>历史与统计</h3>
       <p>最近 7 天柱状图（含目标参考线与日均）、月历视图、逐条记录；左滑或长按删除（可撤销），或一键清空当日记录。</p>
     </div>
     <div class="card feature">
-      <h3>界面与主题</h3>
-      <p>Material 3 界面，完整适配深色模式（含深色冷启动）；平板 / 桌面模式（DeX 等）下饮品卡片自适应最多 5 列，支持鼠标悬停反馈。</p>
+      <div class="f-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="4" y="4" width="16" height="16" rx="3.2"/><path d="M12 4v16M4 12h16"/>
+        </svg>
+      </div>
+      <h3>桌面小部件</h3>
+      <p>4×2 小部件显示当日折算进度与已记毫升数，带同款三档快捷按钮；记录后实时刷新，适配深色模式。</p>
     </div>
     <div class="card feature">
+      <div class="f-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 4.5V15M8 11.2l4 4 4-4"/><path d="M5 19.5h14"/>
+        </svg>
+      </div>
+      <h3>CSV 导出</h3>
+      <p>历史页一键把全部记录导出为 CSV 备份，用系统文件选择器选保存位置，不需要存储权限。</p>
+    </div>
+    <div class="card feature">
+      <div class="f-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 13.6A8.2 8.2 0 0 1 10.4 4 8.2 8.2 0 1 0 20 13.6Z"/>
+        </svg>
+      </div>
+      <h3>界面与主题</h3>
+      <p>Material 3 界面，完整适配深色模式（含深色冷启动）；平板 / 桌面模式（DeX 等）下自适应宽屏布局。</p>
+    </div>
+    <div class="card feature">
+      <div class="f-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 3.2 19 6v5.2c0 4.4-2.9 7.7-7 9.6-4.1-1.9-7-5.2-7-9.6V6l7-2.8Z"/>
+          <path d="M9.4 11.8l1.9 1.9 3.5-3.9"/>
+        </svg>
+      </div>
       <h3>数据只在本机</h3>
       <p>饮水记录存在设备本地数据库，不联网上传；App 唯一的网络请求是检查有没有新版本。</p>
     </div>
+  </div>
+
+  <h2>界面一览</h2>
+  <p class="small muted">Material 3 界面，深色模式完整适配，跟随系统自动切换。</p>
+  <div class="screens">
+    <figure>
+      <img src="images/home-light.png" loading="lazy" width="1080" height="1920" alt="首页 · 浅色主题">
+      <figcaption>首页 · 浅色</figcaption>
+    </figure>
+    <figure>
+      <img src="images/history-light.png" loading="lazy" width="1080" height="1920" alt="历史记录页：最近 7 天柱状图、本月达标统计与月历视图">
+      <figcaption>历史与统计</figcaption>
+    </figure>
+    <figure>
+      <img src="images/home-dark.png" loading="lazy" width="1080" height="1920" alt="首页 · 深色主题">
+      <figcaption>首页 · 深色</figcaption>
+    </figure>
   </div>
 
   <h2>水合系数</h2>
