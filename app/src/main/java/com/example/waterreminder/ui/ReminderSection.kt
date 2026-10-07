@@ -10,6 +10,8 @@ import android.os.PowerManager
 import android.provider.Settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -174,7 +176,12 @@ fun ReminderSection() {
             },
             title = { Text("设置提醒间隔") },
             text = {
-                Column {
+                // 内容（间隔列表 + 免打扰 + OPPO/电池区块）在矮屏或免打扰展开时会超过
+                // 弹窗高度：不加 scroll 的话底部「应用耗电管理 / 应用设置」等引导入口
+                // 被直接裁掉（realme 真机实测），而它们必须常驻可达
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState())
+                ) {
                     Text("选择每隔多久提醒一次：", modifier = Modifier.padding(bottom = 12.dp))
                     listOf(
                         0 to ("🔕 关闭提醒" to MaterialTheme.colorScheme.error),
