@@ -61,7 +61,7 @@
 - `versionCode` 必须严格递增，并与 `versionName` 同序；脚本只防版本文件回退，跨发布递增由发布人保证。2026-09-15 的 `0.0.1` 重置豁免已结束。重置造成旧 `1.4.0`（code 7）用户不能接收更低 code 的更新，Android 也会拒绝降级安装；此兼容影响已接受。
 - `docs/version.json` 是发布 Manifest。`versionCode`、`versionName`、`apkUrl`、`sha256` 只能由 Release 建立后的 CI 写回；手动只维护 `changelog` 与 `forceUpdate`。本地不得提前改机器字段，以免客户端请求尚未上传的 asset。
 - Release 缺少 `keystore.properties` 时在 `packageRelease` 阶段失败是有意设计，禁止绕过或改成生成未签名 Release APK。`scripts/release.sh` 不自动 commit/push 也是有意设计。
-- 未经用户明确确认，不得 push、发版或执行其他对外发布动作。推送正式形如 `v1.4.0` 的 tag 会触发签名构建和 Release；推送 `master` 会发布 Pages。二者是独立的对外动作，必须分别获得确认，顺序遵循 README「发布流程」。
+- 未经用户明确确认，不得 push、发版或执行其他对外发布动作。推送正式形如 `v1.4.0` 的 tag 会触发签名构建和 Release；推送 `master` 会发布 Pages。二者是独立的对外动作，必须分别获得确认，顺序遵循 [docs/RELEASE.md](docs/RELEASE.md)「发布流程」。
 - Beta tag 使用 `v<versionName>-<后缀>`，源码 `versionName` 必须包含相同后缀。预发布 workflow 也会触发：Release 必须标记 prerelease；不得写回 `docs/version.json`；预发布说明写入带注释 tag，由 workflow 作为 Release 正文来源。Beta 与其正式版共用同一 `versionCode`，这是唯一递增豁免。Beta 不替代 Manifest 所指正式包。
 - 正式 Release 正文取自 tag 指向提交中的 `docs/version.json`。只改 master 的 changelog 后重跑 workflow 不会更新已发布正文。确需补改时用 `git tag -f -a` 移动 tag 并强推该 tag，不要先删除 tag，以免 Releases tag 页面短暂 404。此操作仍属外部发布动作，需用户明确确认。
 - Manifest 的机器字段必须指向真实存在的 Release。删除 Release 后不得手改 Manifest；应按正式发布流程处理。线上 APK 摘要从 Releases API asset 的 `digest` 核验，不得下载大体积 APK。
