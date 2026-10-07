@@ -36,7 +36,10 @@ private val DarkColorScheme = darkColorScheme(
     onSurface = Color(0xFFE2E2E6),
     surfaceVariant = Color(0xFF42474E),
     onSurfaceVariant = Color(0xFFC2C7CF),
-    outline = Color(0xFF8C9199)
+    outline = Color(0xFF8C9199),
+    // 分组卡容器：主页「快速记录」卡的中性底（比 surface 亮一档，比 surfaceVariant 暗一档）
+    surfaceContainer = Color(0xFF23262D),
+    surfaceContainerHigh = Color(0xFF2B2F36)
 )
 
 private val LightColorScheme = lightColorScheme(
@@ -62,7 +65,10 @@ private val LightColorScheme = lightColorScheme(
     onSurface = Color(0xFF2C3E50),
     surfaceVariant = Color(0xFFF8FAFC),
     onSurfaceVariant = Color(0xFF64748B),
-    outline = Color(0xFFCBD5E1)
+    outline = Color(0xFFCBD5E1),
+    // 分组卡容器：主页「快速记录」卡的中性底（比 background 深一档，与 surface 白区分）
+    surfaceContainer = Color(0xFFEFF3F8),
+    surfaceContainerHigh = Color(0xFFE6ECF4)
 )
 
 /**

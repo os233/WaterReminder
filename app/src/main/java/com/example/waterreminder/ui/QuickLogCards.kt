@@ -3,13 +3,13 @@ package com.example.waterreminder.ui
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -20,11 +20,87 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.waterreminder.data.DrinkType
 
+/**
+ * 饮料圆形选择器：一枚枚饮料色圆点，选中实色 + 白对勾，未选浅色底 + 饮料图标。
+ * 它是轻量的次级选择器（点杯型按钮即记录，这里只决定下一杯记什么），
+ * 视觉重量刻意低于杯型按钮，避免主页变成「按钮墙」。
+ */
+@Composable
+fun DrinkDotSelector(
+    drinks: List<DrinkType>,
+    selected: DrinkType,
+    onSelect: (DrinkType) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceEvenly
+    ) {
+        drinks.forEach { drink ->
+            val isSelected = drink == selected
+            Column(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable { onSelect(drink) }
+                    .semantics(mergeDescendants = true) {
+                        contentDescription = "${drink.label}${if (isSelected) "，已选择" else ""}"
+                    }
+                    .padding(horizontal = 2.dp, vertical = 4.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(
+                            animateColorAsState(
+                                targetValue = if (isSelected) drink.color else drink.color.copy(alpha = 0.15f),
+                                animationSpec = tween(150),
+                                label = "dotBg"
+                            ).value
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isSelected) {
+                        Icon(
+                            imageVector = Icons.Filled.Check,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    } else {
+                        Icon(
+                            imageVector = drink.icon,
+                            contentDescription = null,
+                            tint = drink.color,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = drink.label,
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                    color = if (isSelected) drink.color else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 杯型快捷记录按钮：固定尺寸（不再 1:1 占满半屏宽），点按即按当前饮料记录一杯。
+ * 高频核心操作：轻震动确认「记上了」，仅视觉的缩放脉冲在口袋里感知不到。
+ */
 @Composable
 fun WaterAmountCard(
     amount: Int,
@@ -35,24 +111,23 @@ fun WaterAmountCard(
 ) {
     var pressed by remember { mutableStateOf(false) }
     val scale by animateFloatAsState(
-        targetValue = if (pressed) 0.95f else 1f,
+        targetValue = if (pressed) 0.94f else 1f,
         label = "scale"
     )
     val haptic = LocalHapticFeedback.current
 
     Card(
         onClick = {
-            // 高频核心操作：轻震动确认「记上了」，仅视觉的缩放脉冲在口袋里感知不到
             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
             pressed = true
             onClick()
         },
         modifier = modifier
-            .scale(scale)
-            .aspectRatio(1f),
+            .height(112.dp)
+            .scale(scale),
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
-            containerColor = color.copy(alpha = 0.12f)
+            containerColor = color.copy(alpha = 0.10f)
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
@@ -63,7 +138,7 @@ fun WaterAmountCard(
         ) {
             Box(
                 modifier = Modifier
-                    .size(44.dp)
+                    .size(40.dp)
                     .clip(CircleShape)
                     .background(color.copy(alpha = 0.2f)),
                 contentAlignment = Alignment.Center
@@ -72,19 +147,19 @@ fun WaterAmountCard(
                     imageVector = icon,
                     contentDescription = null,
                     tint = color,
-                    modifier = Modifier.size(24.dp)
+                    modifier = Modifier.size(20.dp)
                 )
             }
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = "+$amount",
-                fontSize = 16.sp,
+                fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
                 color = color
             )
             Text(
                 text = "ml",
-                fontSize = 12.sp,
+                fontSize = 11.sp,
                 color = color.copy(alpha = 0.7f)
             )
         }
@@ -94,87 +169,6 @@ fun WaterAmountCard(
         if (pressed) {
             kotlinx.coroutines.delay(150)
             pressed = false
-        }
-    }
-}
-
-/**
- * 饮料选择卡片：替代默认 FilterChip。
- * 选中态用饮料身份色（浅色底 + 1.5dp 描边 + 标签加重为身份色），与快速记录卡片的
- * 「+200」同语言；悬停态叠一层更浅的身份色（鼠标 / 触控笔等指针设备可见）。
- * 最小高度对齐「自定义水量」按钮（52dp，矮视口 46dp），触控目标远超 48dp。
- */
-@Composable
-internal fun DrinkTypeCard(
-    drink: DrinkType,
-    selected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val interaction = remember { MutableInteractionSource() }
-    val hovered by interaction.collectIsHoveredAsState()
-
-    val container = animateColorAsState(
-        targetValue = when {
-            selected -> drink.color.copy(alpha = 0.12f)
-            hovered -> drink.color.copy(alpha = 0.06f)
-            else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
-        },
-        animationSpec = tween(150),
-        label = "drinkContainer"
-    )
-    val border = animateColorAsState(
-        targetValue = when {
-            selected -> drink.color.copy(alpha = 0.55f)
-            hovered -> drink.color.copy(alpha = 0.35f)
-            else -> Color.Transparent
-        },
-        animationSpec = tween(150),
-        label = "drinkBorder"
-    )
-    // 选中时标签加重为身份色 —— 深浅两套主题下身份色对背景都有足够对比
-    val labelColor = if (selected) drink.color else MaterialTheme.colorScheme.onSurface
-
-    Surface(
-        selected = selected,
-        onClick = onClick,
-        interactionSource = interaction,
-        modifier = modifier,
-        shape = RoundedCornerShape(14.dp),
-        color = container.value,
-        border = BorderStroke(1.5.dp, border.value)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = if (isCompactViewport()) 46.dp else 52.dp)
-                .padding(horizontal = 10.dp),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(28.dp)
-                    .clip(CircleShape)
-                    .background(drink.color.copy(alpha = if (selected) 0.2f else 0.15f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = drink.icon,
-                    contentDescription = null,
-                    tint = drink.color,
-                    modifier = Modifier.size(17.dp)
-                )
-            }
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = drink.label,
-                fontSize = 14.sp,
-                maxLines = 1,
-                softWrap = false,
-                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                color = labelColor
-            )
         }
     }
 }
