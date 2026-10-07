@@ -61,6 +61,9 @@ class QuickAddReceiver : BroadcastReceiver() {
                 // 桌面小部件同步进度；未添加小部件时 push 内部自会跳过
                 WaterWidgetUpdater.push(context, todayTotal, UserPrefs.getDailyGoal(context))
                 showFeedback(context, amount, todayTotal)
+            } catch (e: Exception) {
+                // 记一笔不失败，不让点个按钮把进程带走（磁盘满、库异常等）
+                Log.e(TAG, "quick add failed", e)
             } finally {
                 pendingResult.finish()
             }

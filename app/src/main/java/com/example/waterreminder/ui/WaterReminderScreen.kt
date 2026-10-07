@@ -359,27 +359,19 @@ fun WaterReminderScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        WaterAmountCard(
-                            amount = 200,
-                            icon = selectedDrink.icon,
-                            color = selectedDrink.color,
-                            onClick = { recordDrink(context, scope, dao, selectedDrink, 200, snackbarHostState) },
-                            modifier = Modifier.weight(1f)
-                        )
-                        WaterAmountCard(
-                            amount = 350,
-                            icon = selectedDrink.icon,
-                            color = selectedDrink.color,
-                            onClick = { recordDrink(context, scope, dao, selectedDrink, 350, snackbarHostState) },
-                            modifier = Modifier.weight(1f)
-                        )
-                        WaterAmountCard(
-                            amount = 500,
-                            icon = selectedDrink.icon,
-                            color = selectedDrink.color,
-                            onClick = { recordDrink(context, scope, dao, selectedDrink, 500, snackbarHostState) },
-                            modifier = Modifier.weight(1f)
-                        )
+                        // 档位单一来源：与通知/小部件快捷按钮共用 QuickAddReceiver.QUICK_AMOUNTS，
+                        // 改档位只改一处
+                        com.example.waterreminder.notification.QuickAddReceiver.QUICK_AMOUNTS.forEach { volume ->
+                            WaterAmountCard(
+                                amount = volume,
+                                icon = selectedDrink.icon,
+                                color = selectedDrink.color,
+                                onClick = {
+                                    recordDrink(context, scope, dao, selectedDrink, volume, snackbarHostState)
+                                },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
                     }
                 }
             }

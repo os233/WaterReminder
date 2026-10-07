@@ -124,6 +124,7 @@ MainActivity / 应用装配
 
 notification/ ──► Android AlarmManager、BroadcastReceiver、Notification API
                └──► 提醒偏好与调度逻辑
+               └──► widget/（QuickAddReceiver 写库后经 WaterWidgetUpdater 推送小部件）
 
 widget/ ──► Android AppWidgetManager、RemoteViews
         └──► data/ DAO 与偏好、notification/QuickAddReceiver（复用快捷记录入口）

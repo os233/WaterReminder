@@ -19,6 +19,9 @@ class WaterWidgetProvider : AppWidgetProvider() {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 WaterWidgetUpdater.refresh(context)
+            } catch (e: Exception) {
+                // 刷新失败只记日志：小部件停留在上次内容，不拖垮进程
+                Log.e(TAG, "widget refresh failed", e)
             } finally {
                 pendingResult.finish()
             }

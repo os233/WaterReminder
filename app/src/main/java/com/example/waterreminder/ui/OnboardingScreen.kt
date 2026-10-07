@@ -106,6 +106,10 @@ fun OnboardingScreen(onComplete: () -> Unit) {
                     Toast.LENGTH_LONG
                 ).show()
             }
+        } else {
+            // 重跑引导时选「不提醒」要与提醒卡片同语义：取消已有闹钟，
+            // 否则旧提醒继续生效、BootReceiver 还会按旧 prefs 补排
+            AlarmManagerHelper(context).cancelAlarm()
         }
         // 新装用户尚无记录：把目标先推给小部件，进度条立刻可见
         WaterWidgetUpdater.push(context, 0, goal)
