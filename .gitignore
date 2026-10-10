@@ -26,6 +26,8 @@ keystore.properties
 
 # ---- AI 助手的工作笔记（含本地路径等个人信息），公开仓库不入库 ----
 /.workbuddy-ai/
+# WorkBuddy 在工作区内的数据目录（项目级 skill 等本机状态），同样不入库
+/.workbuddy/
 # 其他 AI 工具的本地状态（会话计划文件等）
 /.zcode/
 
