@@ -1,8 +1,8 @@
 {
-  "versionCode": 13,
-  "versionName": "0.2.0",
-  "apkUrl": "https://github.com/os233/WaterReminder/releases/download/v0.2.0/WaterReminder_v0.2.0_release.apk",
-  "sha256": "13c4325502e67e51f4f0b1c604dc110da93c90d22fb6e553d75a78d1d5917f24",
+  "versionCode": 14,
+  "versionName": "0.2.1",
+  "apkUrl": "https://github.com/os233/WaterReminder/releases/download/v0.2.1/WaterReminder_v0.2.1_release.apk",
+  "sha256": "236e5ef8933d8cd3f7995163a1c48b04d58dbf2b57f52ab8e4f9197ed4fd1b78",
   "changelog": "# 内部改进\n1. 业务操作统一收口：记一笔、撤销、删除、清空与 CSV 导出共用同一条写库链路，桌面小部件由数据变更统一刷新，时序更可靠。\n2. 统计口径（连续达标、月度达标、周统计、水合折算）收敛为单一来源并补齐单元测试。\n3. 无界面与功能变化；数据与设置完全兼容。",
   "forceUpdate": false
 }
