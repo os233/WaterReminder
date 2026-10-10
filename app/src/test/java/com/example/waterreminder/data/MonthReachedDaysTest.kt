@@ -1,6 +1,5 @@
-package com.example.waterreminder.ui
+package com.example.waterreminder.data
 
-import com.example.waterreminder.data.DailyTotal
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import java.time.LocalDate
@@ -14,7 +13,7 @@ class MonthReachedDaysTest {
 
     @Test
     fun `current month counts only elapsed days`() {
-        val (reached, counted) = monthReachedStats(
+        val (reached, counted) = WaterStats.monthReachedStats(
             totals("2026-10-01" to 2000, "2026-10-07" to 2000),
             2000, YearMonth.of(2026, 10), LocalDate.parse("2026-10-07")
         )
@@ -25,7 +24,7 @@ class MonthReachedDaysTest {
     @Test
     fun `past month counts the full month`() {
         val totals = (1..30).map { DailyTotal("2026-09-%02d".format(it), 2000) }
-        val (reached, counted) = monthReachedStats(
+        val (reached, counted) = WaterStats.monthReachedStats(
             totals, 2000, YearMonth.of(2026, 9), LocalDate.parse("2026-10-07")
         )
         assertEquals(30, counted)
@@ -34,7 +33,7 @@ class MonthReachedDaysTest {
 
     @Test
     fun `below goal days are not counted`() {
-        val (reached, _) = monthReachedStats(
+        val (reached, _) = WaterStats.monthReachedStats(
             totals("2026-10-01" to 1999, "2026-10-02" to 2000),
             2000, YearMonth.of(2026, 10), LocalDate.parse("2026-10-07")
         )
@@ -43,7 +42,7 @@ class MonthReachedDaysTest {
 
     @Test
     fun `empty totals reach zero but keep the denominator`() {
-        val (reached, counted) = monthReachedStats(
+        val (reached, counted) = WaterStats.monthReachedStats(
             emptyList(), 2000, YearMonth.of(2026, 10), LocalDate.parse("2026-10-07")
         )
         assertEquals(0, reached)

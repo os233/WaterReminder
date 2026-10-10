@@ -23,7 +23,7 @@ object CsvExport {
         val lines = ArrayList<String>(records.size + 1)
         lines.add(HEADER)
         records.forEach { record ->
-            val effective = record.amount * record.hydration
+            val effective = WaterStats.effectiveAmount(record.amount, record.hydration)
             lines.add(
                 listOf(
                     // 用 ISO_LOCAL_DATE_TIME 格式化器而非 toString()：后者秒为 0 时会省略

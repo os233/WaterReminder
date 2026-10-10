@@ -1,6 +1,5 @@
-package com.example.waterreminder.ui
+package com.example.waterreminder.data
 
-import com.example.waterreminder.data.DailyTotal
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import java.time.LocalDate
@@ -15,12 +14,12 @@ class ComputeStreakTest {
 
     @Test
     fun `空记录返回0`() {
-        assertEquals(0, computeStreak(emptyList(), goal = 2000, today = today))
+        assertEquals(0, WaterStats.computeStreak(emptyList(), goal = 2000, today = today))
     }
 
     @Test
     fun `只有今天达标记1天`() {
-        assertEquals(1, computeStreak(totals(today to 2000), goal = 2000, today = today))
+        assertEquals(1, WaterStats.computeStreak(totals(today to 2000), goal = 2000, today = today))
     }
 
     @Test
@@ -28,7 +27,7 @@ class ComputeStreakTest {
         // 今天还没喝，昨天与前天达标 → 连续 2 天
         assertEquals(
             2,
-            computeStreak(
+            WaterStats.computeStreak(
                 totals(today.minusDays(1) to 2500, today.minusDays(2) to 2000),
                 goal = 2000,
                 today = today
@@ -41,7 +40,7 @@ class ComputeStreakTest {
         // 更早的达标不救场
         assertEquals(
             0,
-            computeStreak(totals(today.minusDays(2) to 3000), goal = 2000, today = today)
+            WaterStats.computeStreak(totals(today.minusDays(2) to 3000), goal = 2000, today = today)
         )
     }
 
@@ -49,7 +48,7 @@ class ComputeStreakTest {
     fun `断档打断连续`() {
         assertEquals(
             1,
-            computeStreak(
+            WaterStats.computeStreak(
                 totals(
                     today to 2000,
                     today.minusDays(1) to 500, // 未达标 → 断
@@ -65,7 +64,7 @@ class ComputeStreakTest {
     fun `恰好等于目标也算达标`() {
         assertEquals(
             2,
-            computeStreak(
+            WaterStats.computeStreak(
                 totals(today to 2000, today.minusDays(1) to 2000),
                 goal = 2000,
                 today = today
@@ -82,6 +81,6 @@ class ComputeStreakTest {
             today.minusDays(1) to 2300,
             today to 2400
         ).reversed()
-        assertEquals(4, computeStreak(list, goal = 2000, today = today))
+        assertEquals(4, WaterStats.computeStreak(list, goal = 2000, today = today))
     }
 }

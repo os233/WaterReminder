@@ -16,4 +16,10 @@ data class WaterRecord(
     val drinkType: String = DrinkType.WATER.id,
     @ColumnInfo(defaultValue = "1.0")
     val hydration: Double = 1.0
-)
+) {
+    companion object {
+        /** 单笔水量的合法范围（ml）：首页自定义水量校验与快捷记录钳制共用同一口径 */
+        const val MIN_AMOUNT_ML = 1
+        const val MAX_AMOUNT_ML = 5000
+    }
+}

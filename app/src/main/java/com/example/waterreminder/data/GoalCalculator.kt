@@ -17,6 +17,16 @@ object GoalCalculator {
     const val MAX_GOAL_ML = 5000
     const val WEIGHT_FACTOR_ML_PER_KG = 30
 
+    // 手动设置目标的允许下限与步长（首页目标滑杆、引导页目标滑杆共用）。
+    // 手动目标允许低于推荐值的夹紧下限（MIN_GOAL_ML=1500），到 1000。
+    const val MANUAL_GOAL_MIN_ML = 1000
+    const val MANUAL_GOAL_STEP_ML = 100
+
+    /** 手动目标统一口径：向下取整到步长并夹紧到允许范围 */
+    fun snapManualGoal(goalMl: Int): Int =
+        ((goalMl / MANUAL_GOAL_STEP_ML) * MANUAL_GOAL_STEP_ML)
+            .coerceIn(MANUAL_GOAL_MIN_ML, MAX_GOAL_ML)
+
     /** 夹紧前的原始推荐值；供界面做「被夹紧」披露与测试断言 */
     fun calculateRawGoal(gender: Gender, weightKg: Int?, activity: ActivityLevel): Int {
         val base = when (gender) {
