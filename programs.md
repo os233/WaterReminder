@@ -17,18 +17,21 @@ Android 系统 / 用户
 应用入口与系统协调：MainActivity、notification/
         │ 页面状态和用户操作       │ 闹钟、广播与通知
         ▼                         ▼
-呈现：ui/                   Android 平台 API
-        │ 查询/写入
+呈现：ui/（Compose + 各屏 ViewModel）    Android 平台 API
+        │ 业务操作
+        ▼
+数据出口：data/WaterRecordRepository
+        │ 查询/写入（写后统一刷新小部件）
         ▼
 本地数据：data/ ───────────── 远程更新：data/remote/
-  Room、DAO、偏好设置             OkHttp、Manifest 校验
+  Room、DAO、偏好、统计口径       OkHttp、Manifest 校验
 ```
 
 图中表达的是当前主要调用方向，不代表所有模块都能互相依赖。依赖规则见第 4 节。
 
 ### 1.2 当前不包含的层
 
-目前没有独立的 Domain、Repository、DI 或多模块架构。界面直接调用 Room DAO 和设置对象；提醒功能直接使用 Android 系统 API。不得仅为追求分层形式新增这些层或框架；只有明确的职责缺口、重复实现或可说明的测试/维护收益，才考虑演进。
+目前没有独立的 Domain/UseCase 层、DI 框架或多模块架构；Repository 只有一个具体类 `WaterRecordRepository`（饮水记录与每日目标的单一业务出口，无接口抽象），各屏业务操作由 `ui/` 下的 ViewModel 承载，Compose 界面不直接写库或排闹钟；提醒功能直接使用 Android 系统 API。不得仅为追求分层形式新增层、接口或框架；只有明确的职责缺口、重复实现或可说明的测试/维护收益，才考虑演进。
 
 ## 2. 模块与职责边界
 
@@ -44,11 +47,12 @@ Android 系统 / 用户
 
 **位置：** `ui/WaterReminderScreen.kt`、`ui/HistoryScreen.kt`、`ui/RememberToday.kt`、`ui/theme/`
 
-- `WaterReminderScreen` 展示饮水概览、每日目标、记录与提醒设置，并将用户操作交给对应数据或提醒能力。
-- `HistoryScreen` 展示历史记录及日期汇总。
+- `WaterReminderScreen` 展示饮水概览、每日目标、记录与提醒设置，并将用户操作交给本屏 `HomeViewModel`。
+- `HistoryScreen` 展示历史记录及日期汇总，操作交给 `HistoryViewModel`。
+- 每屏一个 ViewModel（`HomeViewModel` / `HistoryViewModel` / `ReminderViewModel` / `OnboardingViewModel`），手动 factory 构造，无 DI；它们是业务操作（写库、排闹钟、落偏好）的状态持有者。ViewModel 不自建「今天」的日期源——观察哪个日期、何时跨天刷新由界面的 `rememberToday()` 决定后传入。
 - `RememberToday` 提供与生命周期同步的当前日期：进入 `STARTED` 时立即刷新，可见期间每 60 秒轮询。界面日期不得自行缓存成跨生命周期快照；更多约束见 `AGENTS.md`。
 - `theme/` 只承载 Compose 主题、颜色与字体定义。
-- UI 负责呈现和交互，不复制数据存储、闹钟调度或网络协议逻辑。当前界面可直接调用 DAO 与设置对象；不要为此臆造抽象层。
+- UI 负责呈现和交互，不复制数据存储、闹钟调度或网络协议逻辑。业务操作经 ViewModel 调用数据出口与提醒能力；Compose 直接保留的只有展示态初始化读取（如引导页预填个人资料）与 Snackbar 时机等呈现决策，不要为此再臆造抽象层。
 
 ### 2.3 提醒与系统协调模块 `notification/`
 
@@ -69,6 +73,8 @@ Android 系统 / 用户
 - `WaterRecordDao` 是记录的持久化查询接口，负责新增、删除、按日读取、每日总量和历史汇总。每日折算量按 `amount × hydration` 计算；日期由调用方明确传入。列表与汇总查询以 `Flow` 暴露变化。
 - `WaterDatabase` 是 Room 数据库入口，当前数据库名为 `water_database`，记录表为 `water_records`，数据库版本为 2。
 - `UserPrefs` 保存每日目标等轻量用户偏好。提醒偏好与更新偏好分别由对应功能维护；SharedPreferences 文件名和 key 是已发布客户端的持久化接口。
+- `WaterRecordRepository` 是饮水记录与每日目标的单一业务出口：所有写库操作从这里走，写完统一刷新小部件，消费方是 `ui/` 各 ViewModel 与 `QuickAddReceiver`。不做接口抽象；不负责提醒调度（notification/）、更新检查（remote/）与统计计算。
+- `WaterStats` 是统计口径纯函数（连续达标天数、月度达标、最近 7 天窗口、水合折算），首页、历史页与导出共用；DAO 汇总 SQL 的 `SUM(amount * hydration)` 与 `WaterStats.effectiveAmount` 同口径。
 - 饮水记录数据不得依赖通知或联网检查的存活；Room schema 变更必须迁移，具体要求见 `AGENTS.md`。
 
 ### 2.5 远程更新模块 `data/remote/`
@@ -93,10 +99,10 @@ Android 系统 / 用户
 
 ### 3.1 饮水记录与每日概览
 
-1. 用户在 Compose 页面新增或删除记录。
-2. UI 调用 `WaterRecordDao` 写入 Room。
-3. DAO 的 `Flow` 查询发出最新记录或汇总，Compose 收集后更新页面。
-4. 每日汇总按记录日期聚合 `amount × hydration`，日期参数由调用方传入；UI 当前日期由 `rememberToday()` 提供。
+1. 用户在 Compose 页面新增或删除记录，操作交给本屏 ViewModel。
+2. ViewModel 经 `WaterRecordRepository` 写入 Room，写完由 repository 统一刷新小部件。
+3. DAO 的 `Flow` 查询发出最新记录或汇总，界面收集后更新页面。
+4. 每日汇总按记录日期聚合 `amount × hydration`（口径见 `WaterStats`），日期参数由调用方传入；UI 当前日期由 `rememberToday()` 提供。
 
 ### 3.2 目标与提醒设置
 
@@ -118,23 +124,24 @@ Android 系统 / 用户
 
 ```text
 MainActivity / 应用装配
-          └──► ui/
-                 ├──► data/ DAO 与偏好接口
-                 └──► notification/ 提醒操作
+          └──► ui/（Compose + 各屏 ViewModel）
+                 ├──► data/ WaterRecordRepository（单一业务出口）、WaterStats 口径
+                 └──► notification/ 提醒操作（ReminderViewModel 持有 AlarmManagerHelper）
 
 notification/ ──► Android AlarmManager、BroadcastReceiver、Notification API
                └──► 提醒偏好与调度逻辑
-               └──► widget/（QuickAddReceiver 写库后经 WaterWidgetUpdater 推送小部件）
+               └──► data/WaterRecordRepository（QuickAddReceiver 与 UI 共用同一写库出口）
 
 widget/ ──► Android AppWidgetManager、RemoteViews
         └──► data/ DAO 与偏好、notification/QuickAddReceiver（复用快捷记录入口）
+        ◄── 由 WaterRecordRepository 在数据变更后统一调用刷新
 
 data/remote/ ──► OkHttp、JSON 解析 API、更新偏好
 data/         ──► Room、SQLite、SharedPreferences
 ```
 
 - Android 系统事件由 Activity/Receiver 等入口接收，再交给其负责的功能逻辑处理。
-- UI 可以依赖当前公开的 DAO、偏好对象与提醒操作；数据模块和提醒模块不得依赖具体 Compose 页面。
+- UI 经 ViewModel 依赖 `WaterRecordRepository`、`WaterStats` 与提醒操作；数据模块和提醒模块不得依赖具体 Compose 页面或 ViewModel。
 - `data/remote/` 不得依赖饮水记录或提醒模块。更新检查结果只通过明确结果类型返回。
 - 数据实体、数据库迁移与偏好存储不应依赖 UI 组件或 Activity 生命周期。
 - 若将来需要引入新的协调层，应先指出具体依赖环、重复逻辑或生命周期/测试缺口，再只在该缺口处调整；不能仅因架构图看起来更「完整」而增加层级。
@@ -186,8 +193,8 @@ data/         ──► Room、SQLite、SharedPreferences
 app/src/main/java/com/example/waterreminder/
 ├── MainActivity.kt                 # Android 应用入口与页面装配
 ├── WaterReminderApp.kt             # Application 入口（无额外初始化）
-├── ui/                              # 页面、日期状态与主题
-├── data/                            # Room、DAO、实体、轻量偏好
+├── ui/                              # 页面、各屏 ViewModel、日期状态与主题
+├── data/                            # Room、DAO、实体、轻量偏好、单一业务出口、统计口径
 │   └── remote/                      # 远程更新协议与检查
 ├── notification/                    # 闹钟、系统广播、通知与快捷记录入口
 └── widget/                          # 桌面小部件（进度与快捷记录）
@@ -214,6 +221,7 @@ scripts/                             # 发布与版本校验脚本
 - 抽取时定义该组件负责什么、不负责什么、谁可以调用，以及数据如何流动；同步更新本文的结构图、目录映射和接口约定。
 - 涉及持久数据、远程协议、已发布设置或系统回调的重构，必须先识别兼容消费者和失败路径，并遵守 `AGENTS.md` 的迁移、更新与验证要求。
 - 不引入 DI 框架、Repository 层、DataStore、Retrofit、常驻服务、重试/缓存/超时或新测试框架，除非任务明确要求且说明现有做法的具体缺口。具体技术限制见 `AGENTS.md`。
+- 2026-10 演进记录（业务操作收口）：触发条件为可描述的维护问题——「记一笔」在首页 UI 与 `QuickAddReceiver` 各有一套实现、水合折算口径重复三处、目标钳制重复两处、小部件刷新散布七处调用点、统计纯函数住在 ui/ 文件导致测试反向 import UI 包。新增：`ui/` 各屏 ViewModel（业务操作的状态持有者，手动 factory 构造，无 DI）、`data/WaterRecordRepository`（负责记录与目标的全部写操作及写后小部件刷新，不负责提醒调度与更新检查，消费方为各 ViewModel 与 `QuickAddReceiver`）、`data/WaterStats`（统计口径纯函数）。Compose 界面不再直接写库、排闹钟或写偏好；唯一新增依赖为 `lifecycle-viewmodel-compose`。prefs 文件名/key、Room schema、闹钟调度方式与更新链路均未变动。
 
 ## 7. AI 代理工作方式
 

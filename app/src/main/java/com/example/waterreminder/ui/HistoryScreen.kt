@@ -1,7 +1,5 @@
 package com.example.waterreminder.ui
 
-import android.content.Context
-import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -34,16 +32,12 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.waterreminder.data.CsvExport
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.waterreminder.data.DrinkType
-import com.example.waterreminder.data.UserPrefs
 import com.example.waterreminder.data.WaterRecord
-import com.example.waterreminder.data.WaterRecordDao
+import com.example.waterreminder.data.WaterStats
 import com.example.waterreminder.ui.theme.successColor
-import com.example.waterreminder.widget.WaterWidgetUpdater
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
@@ -51,14 +45,15 @@ import java.time.format.DateTimeFormatter
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HistoryScreen(
-    dao: WaterRecordDao,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val goal = remember { UserPrefs.getDailyGoal(context) }
+    val viewModel: HistoryViewModel = viewModel(factory = HistoryViewModel.factory(context))
+    // 历史页改不了目标；离开本页组合即销毁，回来时经 currentGoal() 重读，天然与首页同步
+    val goal = remember { viewModel.currentGoal() }
     val snackbarHostState = remember { SnackbarHostState() }
-    val allTotals by dao.getAllDailyTotals().collectAsState(initial = emptyList())
+    val allTotals by viewModel.allDailyTotals().collectAsState(initial = emptyList())
     // 「今天」由 rememberToday() 驱动，跨天/长时间后台后自动刷新（原因见 RememberToday.kt）
     val today = rememberToday()
     // 用户显式点选的历史日期；null 表示「跟随今天」—— 这样停在「今天」的页面会随日期滚动，
@@ -66,36 +61,30 @@ fun HistoryScreen(
     // 仍停在用户选的那一天，不会被弹回今天
     var pinnedDate by rememberSaveable { mutableStateOf<String?>(null) }
     val selectedDate = pinnedDate ?: today.toString()
-    val selectedRecords by dao.getRecordsByDate(selectedDate).collectAsState(initial = emptyList())
-    val selectedTotal by dao.getDailyTotal(selectedDate).collectAsState(initial = 0)
+    val selectedRecords by remember(selectedDate) { viewModel.recordsByDate(selectedDate) }
+        .collectAsState(initial = emptyList())
+    val selectedTotal by remember(selectedDate) { viewModel.dailyTotal(selectedDate) }
+        .collectAsState(initial = 0)
     val selPercent = ((selectedTotal ?: 0).toFloat() / goal).coerceIn(0f, 1f)
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showCalendar by remember { mutableStateOf(true) }
 
     // 最近 7 天数据（缺失的日期补 0）。today 是 key：跨天后窗口要跟着挪，否则仍停在旧的一周
-    val weekData = remember(allTotals, today) {
-        val map = allTotals.associate { it.recordDate to it.total }
-        (6 downTo 0).map { offset ->
-            val d = today.minusDays(offset.toLong())
-            d to (map[d.toString()] ?: 0)
-        }
-    }
+    val weekData = remember(allTotals, today) { WaterStats.last7Days(allTotals, today) }
     // 月度达标 + 连续天数（月度按今天所在月、只计已过天数）
-    val monthReached = monthReachedStats(allTotals, goal, YearMonth.from(today), today)
-    val streak = computeStreak(allTotals, goal, today)
+    val monthReached = WaterStats.monthReachedStats(allTotals, goal, YearMonth.from(today), today)
+    val streak = WaterStats.computeStreak(allTotals, goal, today)
 
     fun deleteRecord(record: WaterRecord) {
         scope.launch {
-            dao.delete(record)
-            WaterWidgetUpdater.refresh(context)
+            viewModel.deleteRecord(record)
             val result = snackbarHostState.showSnackbar(
                 message = "已删除 ${DrinkType.byId(record.drinkType).label} ${record.amount} ml",
                 actionLabel = "撤销",
                 duration = SnackbarDuration.Long
             )
             if (result == SnackbarResult.ActionPerformed) {
-                dao.insert(record.copy(id = 0))
-                WaterWidgetUpdater.refresh(context)
+                viewModel.undoDelete(record)
             }
         }
     }
@@ -105,7 +94,14 @@ fun HistoryScreen(
         ActivityResultContracts.CreateDocument("text/csv")
     ) { uri ->
         if (uri != null) {
-            scope.launch { exportAllRecords(context, dao, uri) }
+            scope.launch {
+                try {
+                    val count = viewModel.exportCsv(uri)
+                    Toast.makeText(context, "已导出 $count 条记录", Toast.LENGTH_SHORT).show()
+                } catch (e: Exception) {
+                    Toast.makeText(context, "导出失败：${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
         }
     }
 
@@ -396,10 +392,7 @@ fun HistoryScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        scope.launch {
-                            dao.deleteRecordsByDate(today.toString())
-                            WaterWidgetUpdater.refresh(context)
-                        }
+                        scope.launch { viewModel.clearDate(today.toString()) }
                         showDeleteConfirm = false
                     }
                 ) {
@@ -419,22 +412,3 @@ fun HistoryScreen(
 /** 导出文件名：water_records_20261007.csv */
 private fun exportFileName(): String =
     "water_records_" + LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd")) + ".csv"
-
-/**
- * 全量导出为 CSV（SAF 已选定目标后执行）：IO 线程查全量、拼 CSV、写流。
- * 成功/失败都给 Toast；用户取消在调用方已静默；云盘供应商的报错原样透出，不吞失败。
- */
-private suspend fun exportAllRecords(context: Context, dao: WaterRecordDao, uri: Uri) {
-    try {
-        val records = dao.getAllRecordsForExport()
-        val csv = withContext(Dispatchers.IO) { CsvExport.buildCsv(records) }
-        withContext(Dispatchers.IO) {
-            val output = context.contentResolver.openOutputStream(uri)
-                ?: throw IllegalStateException("所选位置无法写入")
-            output.use { it.write(csv.toByteArray(Charsets.UTF_8)) }
-        }
-        Toast.makeText(context, "已导出 ${records.size} 条记录", Toast.LENGTH_SHORT).show()
-    } catch (e: Exception) {
-        Toast.makeText(context, "导出失败：${e.message}", Toast.LENGTH_LONG).show()
-    }
-}

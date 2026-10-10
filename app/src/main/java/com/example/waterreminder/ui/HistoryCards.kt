@@ -8,6 +8,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -20,6 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.waterreminder.data.WaterStats
 import com.example.waterreminder.ui.theme.successColor
 import java.time.LocalDate
 
@@ -29,9 +31,8 @@ import java.time.LocalDate
  */
 @Composable
 fun WeeklyStatsSection(weekData: List<Pair<LocalDate, Int>>, goal: Int, today: LocalDate) {
-    val reachedCount = weekData.count { it.second >= goal }
-    val validDays = weekData.count { it.second > 0 }
-    val avg = if (validDays > 0) weekData.sumOf { it.second } / validDays else 0
+    val summary = remember(weekData, goal) { WaterStats.weeklySummary(weekData, goal) }
+    val avg = summary.average
     val reachedColor = MaterialTheme.successColor
     val barColor = MaterialTheme.colorScheme.primary
     val goalLineColor = MaterialTheme.colorScheme.outline
@@ -59,7 +60,7 @@ fun WeeklyStatsSection(weekData: List<Pair<LocalDate, Int>>, goal: Int, today: L
                 )
             }
             Text(
-                text = "达标 $reachedCount/7 天",
+                text = "达标 ${summary.reachedDays}/7 天",
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -74,7 +75,7 @@ fun WeeklyStatsSection(weekData: List<Pair<LocalDate, Int>>, goal: Int, today: L
                 // Canvas 对 TalkBack 是不透明的；给一句概述代替逐日播报
                 .semantics {
                     contentDescription =
-                        "最近 7 天饮水柱状图：达标 $reachedCount 天" +
+                        "最近 7 天饮水柱状图：达标 ${summary.reachedDays} 天" +
                             if (avg > 0) "，有记录日均 $avg 毫升" else ""
                 }
         ) {

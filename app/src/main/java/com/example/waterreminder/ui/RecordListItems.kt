@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.waterreminder.data.DrinkType
 import com.example.waterreminder.data.WaterRecord
+import com.example.waterreminder.data.WaterStats
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
@@ -92,7 +93,7 @@ fun HistoryRecordItem(
     onLongClick: () -> Unit
 ) {
     val drink = DrinkType.byId(record.drinkType)
-    val effective = (record.amount * record.hydration).toInt()
+    val effective = WaterStats.effectiveAmount(record.amount, record.hydration).toInt()
     val time = record.timestamp.format(DateTimeFormatter.ofPattern("HH:mm"))
 
     // 扁平记录行：不再嵌套卡片，挂在历史页记录分组内

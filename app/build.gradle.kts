@@ -103,6 +103,9 @@ tasks.matching { it.name == "packageRelease" }.configureEach {
 dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
+    // ViewModel：业务操作的状态持有者（业务操作从 Composable 收口到各屏 ViewModel，
+    // 不引入 DI，工厂手动构造）。与 runtime 同版本线，无传递版本漂移。
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("androidx.activity:activity-compose:1.9.3")
 
     val composeBom = platform("androidx.compose:compose-bom:2024.09.03")

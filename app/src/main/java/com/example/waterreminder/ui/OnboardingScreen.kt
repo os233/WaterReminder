@@ -23,12 +23,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.waterreminder.data.ActivityLevel
 import com.example.waterreminder.data.Gender
 import com.example.waterreminder.data.GoalCalculator
 import com.example.waterreminder.data.UserPrefs
-import com.example.waterreminder.notification.AlarmManagerHelper
-import com.example.waterreminder.widget.WaterWidgetUpdater
 
 /**
  * 首启引导：① 欢迎 ② 资料与目标（推荐值实时计算、可手改）③ 提醒。
@@ -41,6 +40,7 @@ import com.example.waterreminder.widget.WaterWidgetUpdater
 @Composable
 fun OnboardingScreen(onComplete: () -> Unit) {
     val context = LocalContext.current
+    val viewModel: OnboardingViewModel = viewModel(factory = OnboardingViewModel.factory(context))
     var step by rememberSaveable { mutableIntStateOf(0) }
 
     // 资料项：重新运行引导时预填已存档的个人资料
@@ -66,9 +66,7 @@ fun OnboardingScreen(onComplete: () -> Unit) {
 
     fun refreshPermissionStatus() {
         notificationAllowed = hasNotificationPermission(context)
-        val helper = AlarmManagerHelper(context)
-        exactAlarmAllowed = Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
-            helper.canScheduleExactAlarms()
+        exactAlarmAllowed = viewModel.canScheduleExactAlarms()
     }
 
     LaunchedEffect(step) {
@@ -90,29 +88,21 @@ fun OnboardingScreen(onComplete: () -> Unit) {
     }
 
     fun finishOnboarding() {
-        val selectedGender = gender ?: Gender.OTHER
-        UserPrefs.setOnboardingCompleted(context, true)
-        UserPrefs.setUserGender(context, selectedGender)
-        UserPrefs.setUserWeightKg(context, weightKg)
-        UserPrefs.setUserActivityLevel(context, activity)
-        UserPrefs.setDailyGoal(context, goal)
-        if (intervalHours > 0) {
+        val scheduled = viewModel.finishOnboarding(
+            gender = gender ?: Gender.OTHER,
+            weightKg = weightKg,
+            activity = activity,
+            goal = goal,
+            intervalHours = intervalHours
+        )
+        if (!scheduled) {
             // 精确闹钟权限被拒时排不上：保留引导结论但明确告知，与提醒卡片口径一致
-            val scheduled = AlarmManagerHelper(context).setRepeatingAlarm(intervalHours)
-            if (!scheduled) {
-                Toast.makeText(
-                    context,
-                    "精确闹钟权限未开启，请到系统设置允许后提醒才能准时",
-                    Toast.LENGTH_LONG
-                ).show()
-            }
-        } else {
-            // 重跑引导时选「不提醒」要与提醒卡片同语义：取消已有闹钟，
-            // 否则旧提醒继续生效、BootReceiver 还会按旧 prefs 补排
-            AlarmManagerHelper(context).cancelAlarm()
+            Toast.makeText(
+                context,
+                "精确闹钟权限未开启，请到系统设置允许后提醒才能准时",
+                Toast.LENGTH_LONG
+            ).show()
         }
-        // 新装用户尚无记录：把目标先推给小部件，进度条立刻可见
-        WaterWidgetUpdater.push(context, 0, goal)
         onComplete()
     }
 
@@ -145,14 +135,15 @@ fun OnboardingScreen(onComplete: () -> Unit) {
                     activity = activity,
                     onActivityChange = { activity = it },
                     goal = goal,
-                    onGoalChange = { goal = ((it / 100).toInt() * 100).coerceIn(1000, 5000) }
+                    onGoalChange = { goal = GoalCalculator.snapManualGoal(it.toInt()) }
                 )
                 else -> ReminderStep(
                     intervalHours = intervalHours,
                     onIntervalChange = { intervalHours = it },
                     notificationAllowed = notificationAllowed,
                     exactAlarmAllowed = exactAlarmAllowed,
-                    goalMl = goal
+                    goalMl = goal,
+                    onOpenAlarmSettings = { viewModel.openAlarmSettings() }
                 )
             }
         }
@@ -182,8 +173,7 @@ fun OnboardingScreen(onComplete: () -> Unit) {
                     }
                     TextButton(
                         onClick = {
-                            // 跳过也要落标记：否则下次启动（仍无记录）会再次进引导
-                            UserPrefs.setOnboardingCompleted(context, true)
+                            viewModel.skipOnboarding()
                             onComplete()
                         },
                         modifier = Modifier.fillMaxWidth()
@@ -373,7 +363,8 @@ private fun ReminderStep(
     onIntervalChange: (Int) -> Unit,
     notificationAllowed: Boolean,
     exactAlarmAllowed: Boolean,
-    goalMl: Int
+    goalMl: Int,
+    onOpenAlarmSettings: () -> Unit
 ) {
     val context = LocalContext.current
     Column(
@@ -430,7 +421,7 @@ private fun ReminderStep(
             grantedText = "已允许，提醒时间准确",
             missingActionLabel = "去设置",
             onMissingAction = {
-                runCatching { AlarmManagerHelper(context).openAlarmSettings() }
+                runCatching { onOpenAlarmSettings() }
             }
         )
 

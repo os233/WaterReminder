@@ -37,25 +37,6 @@ internal fun calendarGrid(month: YearMonth): Pair<Int, Int> {
     return firstDayWeekday to (totalCells + 6) / 7
 }
 
-/**
- * 月度达标统计（纯函数）：返回 [本月达标天数, 统计天数]。
- * 当前月只统计到今天为止（未来天数不计入分母）。
- */
-internal fun monthReachedStats(
-    totals: List<DailyTotal>,
-    goal: Int,
-    month: YearMonth,
-    today: LocalDate
-): Pair<Int, Int> {
-    val map = totals.associate { it.recordDate to it.total }
-    val countedDays = if (month == YearMonth.from(today)) today.dayOfMonth else month.lengthOfMonth()
-    var reached = 0
-    for (day in 1..countedDays) {
-        if ((map[month.atDay(day).toString()] ?: 0) >= goal) reached++
-    }
-    return reached to countedDays
-}
-
 @Composable
 fun CalendarView(
     dailyTotals: List<DailyTotal>,

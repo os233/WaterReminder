@@ -1,6 +1,5 @@
 package com.example.waterreminder.ui
 
-import android.content.Context
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.core.tween
@@ -35,29 +34,26 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.waterreminder.data.DailyTotal
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.waterreminder.data.DrinkType
-import com.example.waterreminder.data.UserPrefs
+import com.example.waterreminder.data.GoalCalculator
 import com.example.waterreminder.data.WaterRecord
-import com.example.waterreminder.data.WaterRecordDao
-import com.example.waterreminder.widget.WaterWidgetUpdater
+import com.example.waterreminder.data.WaterStats
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
 @Composable
 fun WaterReminderScreen(
-    dao: WaterRecordDao,
     onHistoryClick: () -> Unit,
     onCheckUpdate: () -> Unit,
     onRerunOnboarding: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val viewModel: HomeViewModel = viewModel(factory = HomeViewModel.factory(context))
 
-    var goal by remember { mutableIntStateOf(UserPrefs.getDailyGoal(context)) }
     var showGoalDialog by remember { mutableStateOf(false) }
     var selectedDrink by remember { mutableStateOf(DrinkType.WATER) }
     var showCustomDialog by remember { mutableStateOf(false) }
@@ -69,16 +65,16 @@ fun WaterReminderScreen(
     // 熄屏与深度睡眠期间不前进，后台放置一夜后 deadline 到不了，界面会一直停在旧日期。
     val today = rememberToday()
 
-    val todayTotal by remember(today) {
-        dao.getDailyTotal(today.toString())
-    }.collectAsState(initial = 0)
+    val goal by viewModel.goal.collectAsState()
+    val todayTotal by remember(today) { viewModel.dailyTotal(today.toString()) }
+        .collectAsState(initial = 0)
     // 数字滚动：记录后总数平滑增长（即时反馈，Neer/HydroTracker 式）
     val animatedTotal by animateIntAsState(
         targetValue = todayTotal ?: 0,
         animationSpec = tween(durationMillis = 500),
         label = "total"
     )
-    val allTotals by dao.getAllDailyTotals().collectAsState(initial = emptyList())
+    val allTotals by viewModel.allDailyTotals.collectAsState(initial = emptyList())
 
     val percent = (todayTotal?.toFloat() ?: 0f) / goal
     val animatedProgress by animateFloatAsState(
@@ -87,7 +83,7 @@ fun WaterReminderScreen(
     )
 
     // 连续天数依赖「今天」：必须把 today 作为 key，否则跨天后仍按旧日期计算
-    val streak = remember(allTotals, goal, today) { computeStreak(allTotals, goal, today) }
+    val streak = remember(allTotals, goal, today) { WaterStats.computeStreak(allTotals, goal, today) }
 
     // 首次达成今日目标时播放一次庆祝动画（本次会话内不重复）
     val goalReached = (todayTotal ?: 0) >= goal
@@ -110,6 +106,25 @@ fun WaterReminderScreen(
     val heroCircle = if (compact) 140.dp else 172.dp
     // 记录撤销：与历史页同款「删除/撤销」Snackbar 模式（HistoryScreen.deleteRecord）
     val snackbarHostState = remember { SnackbarHostState() }
+
+    /**
+     * 记一笔饮水，随后弹 Snackbar 提供「撤销」——快速记录卡片热区大，误触后
+     * 不应逼用户去历史页长按找回。写库与撤销经 HomeViewModel（repository 单一出口），
+     * 提示与撤销时机是呈现决策，留在界面层。
+     */
+    fun recordDrink(drink: DrinkType, amount: Int) {
+        scope.launch {
+            val id = viewModel.addRecord(drink, amount)
+            val result = snackbarHostState.showSnackbar(
+                message = "已记录 ${drink.label} $amount ml",
+                actionLabel = "撤销",
+                duration = SnackbarDuration.Short
+            )
+            if (result == SnackbarResult.ActionPerformed) {
+                viewModel.undoRecord(id)
+            }
+        }
+    }
 
     // Scaffold 负责避让状态栏/手势条并承载记录撤销的 Snackbar；
     // 「今天」仍由 rememberToday() 驱动，与本容器无关
@@ -365,9 +380,7 @@ fun WaterReminderScreen(
                                 amount = volume,
                                 icon = selectedDrink.icon,
                                 color = selectedDrink.color,
-                                onClick = {
-                                    recordDrink(context, scope, dao, selectedDrink, volume, snackbarHostState)
-                                },
+                                onClick = { recordDrink(selectedDrink, volume) },
                                 modifier = Modifier.weight(1f)
                             )
                         }
@@ -428,7 +441,7 @@ fun WaterReminderScreen(
                     supportingText = {
                         if (amountError) {
                             Text(
-                                "请输入 1 – 5000 的整数",
+                                "请输入 ${WaterRecord.MIN_AMOUNT_ML} – ${WaterRecord.MAX_AMOUNT_ML} 的整数",
                                 color = MaterialTheme.colorScheme.error
                             )
                         } else if (selectedDrink.hydration < 1.0) {
@@ -447,8 +460,8 @@ fun WaterReminderScreen(
                 TextButton(onClick = {
                     val amount = customAmount.toIntOrNull()
                     // 非法输入不再静默丢弃：标红报错并留在弹窗里改
-                    if (amount != null && amount in 1..5000) {
-                        recordDrink(context, scope, dao, selectedDrink, amount, snackbarHostState)
+                    if (amount != null && amount in WaterRecord.MIN_AMOUNT_ML..WaterRecord.MAX_AMOUNT_ML) {
+                        recordDrink(selectedDrink, amount)
                         showCustomDialog = false
                         customAmount = ""
                     } else {
@@ -508,7 +521,7 @@ fun WaterReminderScreen(
                     )
                     Slider(
                         value = sliderValue,
-                        onValueChange = { sliderValue = (it / 100).toInt() * 100f },
+                        onValueChange = { sliderValue = GoalCalculator.snapManualGoal(it.toInt()).toFloat() },
                         valueRange = 1000f..5000f
                     )
                     Text(
@@ -522,11 +535,8 @@ fun WaterReminderScreen(
             },
             confirmButton = {
                 TextButton(onClick = {
-                    val newGoal = sliderValue.toInt()
-                    goal = newGoal
-                    UserPrefs.setDailyGoal(context, newGoal)
-                    // 目标变化直接影响小部件进度分母，随手推送一次
-                    WaterWidgetUpdater.push(context, todayTotal ?: 0, newGoal)
+                    // 目标保存与小部件推送都收口在 HomeViewModel → repository
+                    scope.launch { viewModel.setGoal(sliderValue.toInt()) }
                     showGoalDialog = false
                 }) {
                     Text("保存")
@@ -541,53 +551,3 @@ fun WaterReminderScreen(
         )
     }
 }
-
-/**
- * 记一笔饮水，随后弹 Snackbar 提供「撤销」——快速记录卡片热区大，误触后
- * 不应逼用户去历史页长按找回。撤销按插入返回的行 id 精确删除，不影响其他记录。
- */
-private fun recordDrink(
-    context: Context,
-    scope: kotlinx.coroutines.CoroutineScope,
-    dao: WaterRecordDao,
-    drink: DrinkType,
-    amount: Int,
-    snackbarHostState: SnackbarHostState
-) {
-    scope.launch {
-        val id = dao.insert(
-            WaterRecord(
-                amount = amount,
-                drinkType = drink.id,
-                hydration = drink.hydration
-            )
-        )
-        WaterWidgetUpdater.refresh(context)
-        val result = snackbarHostState.showSnackbar(
-            message = "已记录 ${drink.label} $amount ml",
-            actionLabel = "撤销",
-            duration = SnackbarDuration.Short
-        )
-        if (result == SnackbarResult.ActionPerformed) {
-            dao.deleteById(id)
-            WaterWidgetUpdater.refresh(context)
-        }
-    }
-}
-
-/** 连续达标天数：today 未达标则从昨天起算，不因"还没喝"而清零 */
-internal fun computeStreak(totals: List<DailyTotal>, goal: Int, today: LocalDate): Int {
-    if (totals.isEmpty()) return 0
-    val map = totals.associate { it.recordDate to it.total }
-    var date = today
-    if ((map[date.toString()] ?: 0) < goal) {
-        date = date.minusDays(1)
-    }
-    var streak = 0
-    while ((map[date.toString()] ?: 0) >= goal) {
-        streak++
-        date = date.minusDays(1)
-    }
-    return streak
-}
-

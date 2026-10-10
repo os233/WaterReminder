@@ -31,17 +31,17 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import com.example.waterreminder.notification.AlarmManagerHelper
+import androidx.lifecycle.viewmodel.compose.viewModel
 
 @Composable
 fun ReminderSection() {
     val context = LocalContext.current
-    val helper = remember { AlarmManagerHelper(context) }
-    var selectedInterval by remember { mutableIntStateOf(helper.getSavedInterval()) }
+    val viewModel: ReminderViewModel = viewModel(factory = ReminderViewModel.factory(context))
+    var selectedInterval by remember { mutableIntStateOf(viewModel.savedInterval()) }
     var showDialog by remember { mutableStateOf(false) }
-    var dndEnabled by remember { mutableStateOf(helper.isDndEnabled()) }
-    var dndStart by remember { mutableIntStateOf(helper.getDndStartHour()) }
-    var dndEnd by remember { mutableIntStateOf(helper.getDndEndHour()) }
+    var dndEnabled by remember { mutableStateOf(viewModel.isDndEnabled()) }
+    var dndStart by remember { mutableIntStateOf(viewModel.dndStartHour()) }
+    var dndEnd by remember { mutableIntStateOf(viewModel.dndEndHour()) }
     var notificationsAllowed by remember { mutableStateOf(true) }
     var batteryUnrestricted by remember { mutableStateOf(true) }
 
@@ -51,7 +51,7 @@ fun ReminderSection() {
     val isOplus = remember { isOplusDevice() }
 
     LaunchedEffect(Unit) {
-        selectedInterval = helper.getSavedInterval()
+        selectedInterval = viewModel.savedInterval()
         notificationsAllowed = hasNotificationPermission(context)
         batteryUnrestricted = isIgnoringBatteryOptimizations(context)
     }
@@ -196,7 +196,7 @@ fun ReminderSection() {
                                 // 只在真的排上时才改本地状态；排不上（精确闹钟权限被拒）时保持原状，
                                 // 卡片才不会显示一个系统里并不存在的提醒。
                                 // 不自动关弹窗：选完间隔通常还要顺手设免打扰
-                                if (setReminder(context, hours)) selectedInterval = hours
+                                if (viewModel.setReminder(hours)) selectedInterval = hours
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -261,7 +261,7 @@ fun ReminderSection() {
                             checked = dndEnabled,
                             onCheckedChange = {
                                 dndEnabled = it
-                                helper.setDndSettings(it, dndStart, dndEnd)
+                                viewModel.saveDnd(it, dndStart, dndEnd)
                             }
                         )
                     }
@@ -273,11 +273,11 @@ fun ReminderSection() {
                         ) {
                             HourPicker("开始", dndStart) { h ->
                                 dndStart = h
-                                helper.setDndSettings(dndEnabled, h, dndEnd)
+                                viewModel.saveDnd(dndEnabled, h, dndEnd)
                             }
                             HourPicker("结束", dndEnd) { h ->
                                 dndEnd = h
-                                helper.setDndSettings(dndEnabled, dndStart, h)
+                                viewModel.saveDnd(dndEnabled, dndStart, h)
                             }
                         }
                     }
@@ -457,18 +457,4 @@ private fun requestIgnoreBatteryOptimization(context: Context) {
     }
     // 部分 ROM 会拦这个 intent，不能让 Compose 的点击回调跟着崩
     runCatching { context.startActivity(intent) }
-}
-
-/**
- * 设置 / 关闭提醒。
- * @return 是否真的生效 —— 精确闹钟权限被拒时排不上，返回 false，调用方据此别改界面状态，
- *         否则卡片会显示一个系统里并不存在的提醒（用户以为设上了，其实永远不会响）。
- */
-private fun setReminder(context: Context, hours: Int): Boolean {
-    val helper = AlarmManagerHelper(context)
-    if (hours == 0) {
-        helper.cancelAlarm()
-        return true
-    }
-    return helper.setRepeatingAlarm(hours)
 }

@@ -23,7 +23,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.waterreminder.data.UserPrefs
-import com.example.waterreminder.data.WaterDatabase
+import com.example.waterreminder.data.WaterRecordRepository
 import com.example.waterreminder.data.remote.UpdateCheckResult
 import com.example.waterreminder.data.remote.UpdateChecker
 import com.example.waterreminder.data.remote.UpdateInfo
@@ -74,9 +74,6 @@ class MainActivity : ComponentActivity() {
         // 电池优化的提示不在启动时弹 Toast —— 用户看到提示也不知道去哪关。
         // 改为在提醒卡片的设置弹窗里给出可点的入口（见 WaterReminderScreen.ReminderSection）。
 
-        val database = WaterDatabase.getDatabase(this)
-        val dao = database.waterRecordDao()
-
         setContent {
             var updateInfo by remember { mutableStateOf<UpdateInfo?>(null) }
             val scope = rememberCoroutineScope()
@@ -92,7 +89,6 @@ class MainActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     AppNavigation(
-                        dao = dao,
                         // 手动检查：忽略 12 小时节流，并明确告诉用户是「最新」还是「没查到」
                         onCheckUpdate = {
                             scope.launch {
@@ -136,18 +132,17 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun AppNavigation(
-    dao: com.example.waterreminder.data.WaterRecordDao,
-    onCheckUpdate: () -> Unit
-) {
+fun AppNavigation(onCheckUpdate: () -> Unit) {
     val navController = rememberNavController()
     val context = LocalContext.current
+    // 首启门控要查一次库；各屏的业务操作经各自的 ViewModel（repository 单一出口）
+    val recordRepository = remember { WaterRecordRepository.from(context) }
 
     // 首启门控：仅在「无任何记录且未完成引导」时进引导——老用户升级后不受影响
     //（Hidroly 的数据驱动判定式）；判定需异步查库，查清前给最小加载态
     var startDestination by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) {
-        val hasRecords = dao.getAllRecordDates().first().isNotEmpty()
+        val hasRecords = recordRepository.allRecordDates().first().isNotEmpty()
         startDestination =
             if (!UserPrefs.isOnboardingCompleted(context) && !hasRecords) "onboarding" else "home"
     }
@@ -189,7 +184,6 @@ fun AppNavigation(
         }
         composable("home") {
             WaterReminderScreen(
-                dao = dao,
                 onHistoryClick = { navController.navigate("history") },
                 onCheckUpdate = onCheckUpdate,
                 onRerunOnboarding = { navController.navigate("onboarding") }
@@ -197,7 +191,6 @@ fun AppNavigation(
         }
         composable("history") {
             HistoryScreen(
-                dao = dao,
                 onBack = { navController.popBackStack() }
             )
         }

@@ -97,11 +97,13 @@ cp keystore.properties.example keystore.properties
         ├── MainActivity.kt          # 入口：通知 / 精确闹钟权限、NavHost 与首启引导门控
         ├── WaterReminderApp.kt      # Application（空实现，仅在清单中声明）
         ├── data/
-        │   ├── WaterRecord.kt       # Room 实体
+        │   ├── WaterRecord.kt       # Room 实体（含单笔水量合法范围常量）
         │   ├── WaterRecordDao.kt    # 查询与统计
         │   ├── WaterDatabase.kt     # 数据库与迁移
+        │   ├── WaterRecordRepository.kt # 饮水记录 / 目标的单一业务出口：写库后统一刷新小部件，UI 与快捷广播共用
+        │   ├── WaterStats.kt        # 统计口径纯函数（连续天数、月度达标、周窗口、水合折算）
         │   ├── DrinkType.kt         # 饮品类型与水合系数
-        │   ├── GoalCalculator.kt    # 个性化每日目标计算（EFSA 口径，纯函数）
+        │   ├── GoalCalculator.kt    # 个性化每日目标计算（EFSA 口径，纯函数，含手动目标取整/夹紧）
         │   ├── CsvExport.kt         # CSV 导出格式化（纯函数）
         │   ├── UserPrefs.kt         # SharedPreferences（每日目标、引导与个人资料）
         │   └── remote/
@@ -110,12 +112,16 @@ cp keystore.properties.example keystore.properties
         ├── notification/
         │   ├── AlarmManagerHelper.kt # 闹钟调度（setExactAndAllowWhileIdle）、免打扰判断、按原定时刻补排
         │   ├── AlarmReceiver.kt     # 提醒触发、通知渠道（含震动）创建、快捷记录动作按钮
-        │   ├── QuickAddReceiver.kt  # 通知 / 小部件快捷记录：写库 + 静默反馈
+        │   ├── QuickAddReceiver.kt  # 通知 / 小部件快捷记录：经 WaterRecordRepository 写库 + 静默反馈
         │   └── BootReceiver.kt      # 开机 / 覆盖安装后恢复
         ├── widget/
         │   ├── WaterWidgetProvider.kt  # 4×2 桌面小部件
         │   └── WaterWidgetUpdater.kt   # 进度渲染与推送（数据变更方调用）
         └── ui/                      # 首页 / 历史页装配、引导页、拆分后的卡片与对话框组件、
+            HomeViewModel.kt         # 首页业务操作：记一笔 / 撤销 / 改目标（数据走 repository）
+            HistoryViewModel.kt      # 历史页业务操作：删除 / 撤销 / 清空 / CSV 导出
+            ReminderViewModel.kt     # 提醒设置：持有 AlarmManagerHelper，排定决策与免打扰保存
+            OnboardingViewModel.kt   # 引导落库编排（个人资料、目标、提醒、小部件）
             WaterProgress.kt         # 水球波浪进度
             RememberToday.kt         # 生命周期感知的「今天」，界面统一日期源
             └── theme/               # 主题配色（品牌蓝、深色模式、success 语义色）
