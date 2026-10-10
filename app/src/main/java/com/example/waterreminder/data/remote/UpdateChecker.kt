@@ -131,8 +131,13 @@ class UpdateChecker(private val context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val intent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
                 data = Uri.parse("package:${context.packageName}")
+                // 与 AlarmManagerHelper.openAlarmSettings 同款：本类也可能被非 Activity
+                // context 构造（receiver / 将来收进 ViewModel），非 Activity context 启动
+                // Activity 缺 NEW_TASK 会抛 AndroidRuntimeException
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
-            context.startActivity(intent)
+            // 部分 ROM 会拦这个 intent，不让点击回调跟着崩
+            runCatching { context.startActivity(intent) }
         }
     }
 
