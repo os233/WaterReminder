@@ -12,15 +12,11 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.example.waterreminder.R
-import com.example.waterreminder.data.UserPrefs
-import com.example.waterreminder.data.WaterDatabase
 import com.example.waterreminder.data.WaterRecord
-import com.example.waterreminder.widget.WaterWidgetUpdater
+import com.example.waterreminder.data.WaterRecordRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import java.time.LocalDate
 
 /**
  * 提醒通知 / 桌面小部件的「快捷记录」入口（阶段二接入小部件）。
@@ -48,18 +44,16 @@ class QuickAddReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != ACTION_QUICK_ADD) return
-        val amount = intent.getIntExtra(EXTRA_AMOUNT, 0).coerceIn(1, 5000)
+        val amount = intent.getIntExtra(EXTRA_AMOUNT, 0)
+            .coerceIn(WaterRecord.MIN_AMOUNT_ML, WaterRecord.MAX_AMOUNT_ML)
         Log.i(TAG, "quick add ${amount}ml")
 
         // goAsync 换取写库时间窗口；Room 禁止主线程访问，IO 协程内完成后必须手工 finish
         val pendingResult = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val dao = WaterDatabase.getDatabase(context).waterRecordDao()
-                dao.insert(WaterRecord(amount = amount))
-                val todayTotal = dao.getDailyTotal(LocalDate.now().toString()).first() ?: 0
-                // 桌面小部件同步进度；未添加小部件时 push 内部自会跳过
-                WaterWidgetUpdater.push(context, todayTotal, UserPrefs.getDailyGoal(context))
+                // 与首页共用同一「记一笔」出口（WaterRecordRepository），写库后统一推小部件
+                val todayTotal = WaterRecordRepository.from(context).quickAddWater(amount)
                 showFeedback(context, amount, todayTotal)
             } catch (e: Exception) {
                 // 记一笔不失败，不让点个按钮把进程带走（磁盘满、库异常等）
